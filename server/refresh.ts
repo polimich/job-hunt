@@ -1,0 +1,190 @@
+/**
+ * Refresh: re-check every open listing, search the boards for new ones, read their text
+ * and record what changed. Runs as one background job; progress is polled by the UI.
+ */
+import type { Company, Listing, RefreshProgress, RefreshRun } from '../shared/types.ts';
+import { autoFit, extractTags, placeOf, vueMention } from './score.ts';
+import * as generic from './sources/generic.ts';
+import * as jobscz from './sources/jobscz.ts';
+import * as linkedin from './sources/linkedin.ts';
+import * as startupjobs from './sources/startupjobs.ts';
+import type { Candidate, Detail } from './sources/types.ts';
+import { loadCompanies, loadListings, loadRuns, loadSettings, saveCompanies, saveListings, saveRuns, slug } from './store.ts';
+
+/** Reading a new posting costs a rate-limited request, so one run takes at most this many. */
+const MAX_NEW_PER_RUN = 40;
+
+const RELEVANT_TITLE =
+  /react|vue|nuxt|front[- ]?end|full[- ]?stack|typescript|javascript|web (developer|engineer)|software (engineer|developer)|vývojář|programátor|\bdeveloper\b/i;
+const DEFAULT_EXCLUDE =
+  /\bjava\b(?!script)|\bphp\b|android|\bios\b|devops|data (engineer|scientist|analyst)|\bqa\b|tester|test engineer|sales|marketing|c\+\+|embedded|ruby|golang|designer|product (manager|owner)|support|kotlin|swift|machine learning|analyst|\bsap\b|salesforce|security|\bsre\b|recruit|manager|intern\b|scientist|firmware|hardware|consultant|architect|\brust\b|backend|back[- ]end|servicenow|sharepoint|mainframe|director|\blead\b|principal|\bstaff\b|junior|power platform/i;
+
+let progress: RefreshProgress = { running: false, step: '', done: 0, total: 0 };
+
+export const getProgress = (): RefreshProgress => progress;
+
+function step(label: string, done = progress.done, total = progress.total): void {
+  progress = { ...progress, step: label, done, total };
+}
+
+export function detailFor(listing: Pick<Listing, 'source' | 'sourceId' | 'url'>): Promise<Detail> {
+  if (listing.source === 'linkedin') return linkedin.detail(listing.sourceId);
+  if (listing.source === 'startupjobs') return startupjobs.detail(listing.url);
+  if (listing.source === 'jobscz') return jobscz.detail(listing.url);
+  return generic.detail(listing.url);
+}
+
+const titleKey = (company: string, title: string) => `${slug(company)}|${slug(title)}`;
+
+export function toListing(c: Candidate, d: Detail, companies: Company[], today: string): Listing {
+  let company = companies.find((x) => x.id === slug(c.company));
+  if (!company) {
+    company = { id: slug(c.company) || `firma-${c.sourceId}`, name: c.company || 'Neznámá firma', size: 'neznámá', emails: [] };
+    companies.push(company);
+  }
+  const mode = c.mode ?? '';
+  const place = placeOf(c.location, mode);
+  const all = `${c.title}\n${d.text}`;
+  return {
+    id: `${c.source}-${c.sourceId}`,
+    companyId: company.id,
+    company: company.name,
+    title: c.title,
+    url: c.url,
+    source: c.source,
+    sourceId: c.sourceId,
+    location: c.location,
+    mode: mode || 'neuvedeno',
+    place,
+    contract: 'neuvedeno',
+    stack: extractTags(all).join(', '),
+    tags: extractTags(all),
+    salaryPosted: c.salaryPosted ?? '',
+    benefits: '',
+    fit: autoFit(c.title, d.text, place),
+    fitSource: 'auto',
+    recommended: false,
+    strengths: '',
+    weaknesses: '',
+    vue: vueMention(all),
+    text: d.text,
+    firstSeen: today,
+    lastChecked: today,
+    open: true,
+  };
+}
+
+async function run(searchNew: boolean): Promise<RefreshRun> {
+  const today = new Date().toISOString().slice(0, 10);
+  const settings = loadSettings();
+  const listings = loadListings();
+  const companies = loadCompanies();
+  const result: RefreshRun = { at: new Date().toISOString(), added: [], closed: [], reopened: [], changed: [], errors: [] };
+
+  // 1. Re-check what we already have.
+  const toCheck = listings.filter((l) => l.open && !l.manual);
+  let i = 0;
+  for (const l of toCheck) {
+    step(`Kontroluji: ${l.company}`, i++, toCheck.length);
+    const d = await detailFor(l);
+    if (d.open === null) {
+      result.errors.push(`${l.company} – ${l.title}: nepodařilo se ověřit`);
+      continue;
+    }
+    l.lastChecked = today;
+    if (!d.open) {
+      l.open = false;
+      l.closedAt = today;
+      result.closed.push(l.id);
+    } else if (d.text && d.text !== l.text) {
+      if (l.text) result.changed.push(l.id);
+      l.text = d.text;
+      if (l.fitSource === 'auto') {
+        l.tags = extractTags(`${l.title}\n${d.text}`);
+        l.stack = l.tags.join(', ');
+      }
+    }
+  }
+  saveListings(listings);
+  if (!searchNew) {
+    saveRuns([result, ...loadRuns()].slice(0, 30));
+    return result;
+  }
+
+  // 2. Search the boards.
+  step('Hledám nové inzeráty', 0, 0);
+  const candidates: Candidate[] = [];
+  const searches: [string, () => Promise<Candidate[]>][] = [
+    ['StartupJobs', () => startupjobs.search((s) => step(s))],
+    ['jobs.cz', () => jobscz.search([...settings.keywords, ...settings.vueKeywords], (s) => step(s))],
+    ['LinkedIn', () => linkedin.search(settings.keywords, settings.vueKeywords, (s) => step(s))],
+  ];
+  for (const [name, search] of searches) {
+    try {
+      candidates.push(...(await search()));
+    } catch (e) {
+      result.errors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // 3. Keep relevant titles we have not seen, one per company + title.
+  const exclude = settings.excludeTitle ? new RegExp(settings.excludeTitle, 'i') : DEFAULT_EXCLUDE;
+  const knownIds = new Set(listings.map((l) => `${l.source}-${l.sourceId}`));
+  const knownTitles = new Set(listings.map((l) => titleKey(l.company, l.title)));
+  const fresh: Candidate[] = [];
+  for (const c of candidates) {
+    const id = `${c.source}-${c.sourceId}`;
+    const key = titleKey(c.company, c.title);
+    if (knownIds.has(id) || knownTitles.has(key)) continue;
+    if (!RELEVANT_TITLE.test(c.title) || exclude.test(c.title)) continue;
+    knownIds.add(id);
+    knownTitles.add(key);
+    fresh.push(c);
+  }
+  if (fresh.length > MAX_NEW_PER_RUN) {
+    result.errors.push(`Nalezeno ${fresh.length} nových inzerátů, načteno prvních ${MAX_NEW_PER_RUN}. Zbytek přibude při dalším obnovení.`);
+  }
+
+  // 4. Read the new ones.
+  const batch = fresh.slice(0, MAX_NEW_PER_RUN);
+  i = 0;
+  for (const c of batch) {
+    step(`Čtu nový inzerát: ${c.company}`, i++, batch.length);
+    const d = await detailFor(c);
+    if (d.open === false) continue;
+    const listing = toListing(c, d, companies, today);
+    listings.push(listing);
+    result.added.push(listing.id);
+  }
+
+  saveCompanies(companies);
+  saveListings(listings);
+  saveRuns([result, ...loadRuns()].slice(0, 30));
+  return result;
+}
+
+/** Start a refresh unless one is already running. Returns false when it was already running. */
+export function startRefresh(searchNew = true): boolean {
+  if (progress.running) return false;
+  progress = { running: true, step: 'Začínám', done: 0, total: 0, startedAt: new Date().toISOString() };
+  run(searchNew)
+    .then(() => {
+      progress = { running: false, step: 'Hotovo', done: 0, total: 0 };
+    })
+    .catch((e: unknown) => {
+      progress = { running: false, step: 'Chyba', done: 0, total: 0, error: e instanceof Error ? e.message : String(e) };
+    });
+  return true;
+}
+
+export async function refreshAndWait(onProgress: (p: RefreshProgress) => void, searchNew = true): Promise<void> {
+  startRefresh(searchNew);
+  let last = '';
+  while (progress.running) {
+    const line = `${progress.step} ${progress.total ? `${progress.done}/${progress.total}` : ''}`;
+    if (line !== last) onProgress(progress);
+    last = line;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  onProgress(progress);
+}
