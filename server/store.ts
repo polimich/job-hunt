@@ -2,11 +2,12 @@
  * Data access over SQLite. Functions keep the shape the rest of the server already uses
  * (whole lists for listings/companies, one record for state), backed by real tables.
  */
-import { extname, join } from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
+import { mkdirSync, renameSync, rmSync } from 'node:fs';
+import { dirname, extname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
 import type { Company, Contact, Db, Doc, Offer, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
-import { DATA_DIR, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
+import { DATA_DIR, DB_FILE, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
 
@@ -89,6 +90,29 @@ export function db(): DatabaseSync {
     importLegacyOnce(conn);
   }
   return conn;
+}
+
+/**
+ * Swap in another database file (a backup, or a copy moved from another machine). The current
+ * one is saved to backups/ first. The file is checked to be a job-hunt database before use.
+ */
+export function replaceDb(upload: string): string {
+  const probe = new DatabaseSync(upload, { readOnly: true });
+  try {
+    const tables = (probe.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((t) => t.name);
+    if (!tables.includes('listings') || !tables.includes('state')) throw new Error('Tohle není databáze job-hunt.');
+  } finally {
+    probe.close();
+  }
+  const saved = join(DATA_DIR, 'backups', `pre-restore-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
+  mkdirSync(dirname(saved), { recursive: true });
+  db().exec(`VACUUM INTO '${saved.replaceAll("'", "''")}'`);
+  conn!.close();
+  conn = undefined;
+  for (const f of [DB_FILE, `${DB_FILE}-wal`, `${DB_FILE}-shm`]) rmSync(f, { force: true });
+  renameSync(upload, DB_FILE);
+  db();
+  return saved;
 }
 
 /** For tests: start over with a fresh database. */

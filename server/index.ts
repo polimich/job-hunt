@@ -16,12 +16,14 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { guard } from './guard.ts';
+import { auth, calendarToken } from './auth.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
 
 const port = Number(process.env.PORT ?? 5174);
 const app = new Hono();
 app.use('*', guard(port));
+app.use('*', auth(process.env.APP_PASSWORD || undefined));
 
 app.get('/api/db', (c) => c.json(loadDb()));
 
@@ -329,6 +331,12 @@ app.delete('/api/docs/:id', (c) => {
 
 // ---------- calendar ----------
 
+/** Where a calendar app can subscribe: with a token when the app is behind a login. */
+app.get('/api/calendar-url', (c) => {
+  const pw = process.env.APP_PASSWORD;
+  return c.json({ path: pw ? `/calendar.ics?token=${calendarToken(pw)}` : '/calendar.ics', login: !!pw });
+});
+
 /** Subscribe to this in a calendar app (webcal://localhost:5174/calendar.ics). */
 app.get('/calendar.ics', (c) => {
   c.header('Content-Type', 'text/calendar; charset=utf-8');
@@ -362,6 +370,21 @@ app.get('/api/export.csv', (c) => {
 app.get('/api/sources', (c) => c.json(sourceInfo(loadSettings())));
 
 app.get('/api/backups', (c) => c.json(listBackups()));
+
+/** Replace the whole database with an uploaded file (moving to another machine, or a backup). */
+app.post('/api/restore', async (c) => {
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) return c.json({ error: 'chybí soubor' }, 400);
+  const tmp = join(DATA_DIR, `upload-${Date.now()}.db`);
+  writeFileSync(tmp, Buffer.from(await file.arrayBuffer()));
+  try {
+    return c.json({ ok: true, previous: replaceDb(tmp) });
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
 app.post('/api/backups', (c) => c.json({ file: backup(today(), true) }));
 
 app.post('/api/refresh', (c) => c.json({ started: startRefresh(), progress: getProgress() }));
@@ -374,7 +397,8 @@ if (existsSync(dist)) {
   app.get('*', serveStatic({ path: './dist/index.html' }));
 }
 
-serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
+// HOST=0.0.0.0 in a container; locally only this machine can connect.
+serve({ fetch: app.fetch, port, hostname: process.env.HOST ?? '127.0.0.1' }, () => {
   console.log(`job-hunt API on http://localhost:${port}`);
   startDailyJobs();
 });

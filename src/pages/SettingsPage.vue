@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, RadarIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, ChevronDownIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
+import { AlarmClockIcon, RadarIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, ChevronDownIcon, DownloadIcon, HardDriveDownloadIcon, LogOutIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
 import { CITIES, cityCode, ISCO_GROUPS, splitList } from '../../shared/search';
 import { SOURCE_LABELS, type Level, type Settings, type Source, type TemplateKind } from '../../shared/types';
 import FilterChip from '../components/FilterChip.vue';
@@ -47,11 +47,25 @@ async function removeDoc(id: string, label: string) {
   await deleteDoc(id).catch((e) => toast.error('Smazání selhalo', { description: String(e) }));
 }
 
-// The API serves the feed on its own port, also while developing on Vite's.
-const calendarUrl = `webcal://${location.hostname}:${location.port === '5173' ? '5174' : location.port || '80'}/calendar.ics`;
+// The API serves the feed on its own port, also while developing on Vite's. A hosted copy
+// adds a secret token, since calendar apps cannot log in.
+const apiHost = location.port === '5173' ? `${location.hostname}:5174` : location.host;
+const calendarPath = ref('/calendar.ics');
+const hasLogin = ref(false);
+const calendarUrl = computed(() => `${location.protocol === 'https:' ? 'https' : 'webcal'}://${apiHost}${calendarPath.value}`);
+const calendarOpenUrl = computed(() => `webcal://${apiHost}${calendarPath.value}`);
+onMounted(async () => {
+  const r = (await (await fetch('/api/calendar-url')).json()) as { path: string; login: boolean };
+  calendarPath.value = r.path;
+  hasLogin.value = r.login;
+});
+async function logout() {
+  await fetch('/logout', { method: 'POST' });
+  location.href = '/login';
+}
 async function copyCalendar() {
   try {
-    await navigator.clipboard.writeText(calendarUrl);
+    await navigator.clipboard.writeText(calendarUrl.value);
     toast.success('Adresa zkopírována');
   } catch {
     toast.error('Kopírování se nepovedlo');
@@ -390,12 +404,12 @@ async function save() {
     <Card>
       <CardHeader>
         <CardTitle class="flex items-center gap-2"><CalendarDaysIcon class="size-4 text-muted-foreground" /> Kalendář</CardTitle>
-        <CardDescription>Přihlas si tuhle adresu v kalendáři (Apple Calendar: Soubor → Nový odběr kalendáře). Obsahuje pohovory, další kroky a úkoly. Funguje, když běží server.</CardDescription>
+        <CardDescription>Přihlas si tuhle adresu v kalendáři (Apple Calendar: Soubor → Nový odběr kalendáře). Obsahuje pohovory, další kroky a úkoly. Funguje, když běží server.{{ hasLogin ? ' Adresa obsahuje tajný klíč, nikomu ji neposílej.' : '' }}</CardDescription>
       </CardHeader>
       <CardContent class="flex flex-wrap items-center gap-2">
         <code class="rounded-lg bg-muted px-2.5 py-1.5 font-mono text-xs">{{ calendarUrl }}</code>
         <Button variant="outline" size="sm" type="button" @click="copyCalendar"><CopyIcon /> Kopírovat</Button>
-        <Button as="a" :href="calendarUrl" variant="ghost" size="sm" type="button"><CalendarPlusIcon /> Otevřít v kalendáři</Button>
+        <Button as="a" :href="calendarOpenUrl" variant="ghost" size="sm" type="button"><CalendarPlusIcon /> Otevřít v kalendáři</Button>
       </CardContent>
     </Card>
 
@@ -419,7 +433,8 @@ async function save() {
       </CardContent>
     </Card>
 
-    <div class="sticky bottom-0 -mx-6 -mb-16 flex justify-end border-t bg-background/85 px-6 py-3 backdrop-blur">
+    <div class="sticky bottom-0 -mx-6 -mb-16 flex justify-end gap-2 border-t bg-background/85 px-6 py-3 backdrop-blur">
+      <Button v-if="hasLogin" variant="ghost" type="button" @click="logout"><LogOutIcon /> Odhlásit</Button>
       <Button type="submit" :disabled="saving">
         <SaveIcon /> {{ saving ? 'Ukládám…' : 'Uložit nastavení' }}
       </Button>

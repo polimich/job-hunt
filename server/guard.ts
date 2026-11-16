@@ -6,12 +6,13 @@
  */
 import type { MiddlewareHandler } from 'hono';
 
-export function allowedHosts(port: number): Set<string> {
-  return new Set(['localhost', '127.0.0.1'].flatMap((h) => [`${h}:${port}`, `${h}:5173`]));
+/** Local addresses, plus the public domain of a hosted copy (PUBLIC_HOST, e.g. jobs.example.com). */
+export function allowedHosts(port: number, publicHost = process.env.PUBLIC_HOST): Set<string> {
+  const local = ['localhost', '127.0.0.1'].flatMap((h) => [`${h}:${port}`, `${h}:5173`]);
+  return new Set([...local, ...(publicHost ? publicHost.split(',').map((h) => h.trim()).filter(Boolean) : [])]);
 }
 
-export function guard(port: number): MiddlewareHandler {
-  const hosts = allowedHosts(port);
+export function guard(port: number, hosts = allowedHosts(port)): MiddlewareHandler {
   return async (c, next) => {
     if (!hosts.has(c.req.header('host') ?? '')) return c.json({ error: 'forbidden host' }, 403);
     if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method)) {
@@ -20,7 +21,9 @@ export function guard(port: number): MiddlewareHandler {
       if (c.req.header('sec-fetch-site') === 'cross-site') return c.json({ error: 'forbidden origin' }, 403);
       const type = c.req.header('content-type') ?? '';
       const empty = !c.req.header('content-length') || c.req.header('content-length') === '0';
-      if (!empty && !type.startsWith('application/json') && !type.startsWith('multipart/form-data')) {
+      // The login form is a plain HTML form; its origin is still checked above.
+      const form = c.req.path === '/login' || c.req.path === '/logout';
+      if (!empty && !form && !type.startsWith('application/json') && !type.startsWith('multipart/form-data')) {
         return c.json({ error: 'unsupported content type' }, 415);
       }
     }
