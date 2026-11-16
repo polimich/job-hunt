@@ -1,5 +1,5 @@
 /** Numbers for the overview page, computed from listings and their history. Pure, so it can be tested. */
-import { addDays, furthestRank, RANK } from '../shared/pipeline';
+import { addDays, daysBetween, furthestRank, RANK } from '../shared/pipeline';
 import type { Listing, ListingState, Source } from '../shared/types';
 
 export interface FunnelStep {
@@ -17,6 +17,8 @@ export interface SourceRow {
   source: Source | 'referral';
   applied: number;
   answered: number;
+  /** Median days from sending to their first answer; null without answers. */
+  medianDays: number | null;
 }
 
 export interface Stats {
@@ -29,6 +31,8 @@ export interface Stats {
   ghosted: number;
   /** Still waiting for an answer. */
   pending: number;
+  /** Median days from sending to their first answer; null without answers. */
+  medianReplyDays: number | null;
   funnel: FunnelStep[];
   weeks: Week[];
   bySource: SourceRow[];
@@ -59,7 +63,7 @@ export function computeStats(listings: Listing[], state: Record<string, ListingS
   for (const { l, st } of applied) {
     // A referral counts as its own channel, wherever the posting itself was found.
     const source: Source | 'referral' = st.referredBy ? 'referral' : l.source;
-    const row = sources.get(source) ?? { source, applied: 0, answered: 0 };
+    const row = sources.get(source) ?? { source, applied: 0, answered: 0, medianDays: null };
     row.applied++;
     if (isAnswered(st)) row.answered++;
     sources.set(source, row);
@@ -75,7 +79,13 @@ export function computeStats(listings: Listing[], state: Record<string, ListingS
     }
   }
 
+  const replies = applied.map((x) => ({ x, d: replyDays(x.st) })).filter((r): r is { x: (typeof applied)[number]; d: number } => r.d !== null);
+  for (const row of sources.values()) {
+    row.medianDays = median(replies.filter((r) => (r.x.st.referredBy ? 'referral' : r.x.l.source) === row.source).map((r) => r.d));
+  }
+
   return {
+    medianReplyDays: median(replies.map((r) => r.d)),
     byDoc: [...docs.values()].sort((a, b) => b.applied - a.applied),
     applied: applied.length,
     answered: applied.filter((x) => isAnswered(x.st)).length,
@@ -112,4 +122,20 @@ export function weeklyGoal(state: Record<string, ListingState>, today: string, g
   let streak = thisWeek >= goal ? 1 : 0;
   for (let w = addDays(monday, -7); (perWeek.get(w) ?? 0) >= goal; w = addDays(w, -7)) streak++;
   return { thisWeek, goal, streak };
+}
+
+export function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const v = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid]! : Math.round((v[mid - 1]! + v[mid]!) / 2);
+}
+
+/** Days from sending an application to the first sign they answered (a step forward, or a no). */
+export function replyDays(st: ListingState): number | null {
+  if (!st.contactedAt) return null;
+  const answer = st.events.find(
+    (e) => e.kind === 'status' && e.status && e.at >= st.contactedAt && ((RANK[e.status] ?? 0) > (RANK.applied ?? 0) || e.status === 'rejected'),
+  );
+  return answer ? daysBetween(st.contactedAt, answer.at) : null;
 }

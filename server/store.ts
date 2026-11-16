@@ -4,7 +4,7 @@
  */
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { Company, Contact, Db, Doc, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import type { Company, Contact, Db, Doc, Offer, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
   followUpDays: 7,
   autoRefresh: true,
   weeklyGoal: 5,
+  skills: ['React', 'TypeScript', 'JavaScript', 'Vue', 'Next.js', 'Node', 'HTML', 'CSS', 'Tailwind', 'REST', 'Git'],
   templates: {
     followUp: {
       cs: {
@@ -185,6 +186,7 @@ const toState = (r: Row, events: TrackEvent[]): ListingState => ({
   labels: json<string[]>(r.labels, []),
   referredBy: (r.referred_by as string) ?? '',
   docIds: json<string[]>(r.doc_ids, []),
+  ...(r.offer ? { offer: json<Offer>(r.offer, undefined as never) } : {}),
   events,
   updatedAt: r.updated_at as string,
 });
@@ -214,13 +216,13 @@ export function putState(id: string, st: ListingState): void {
 function writeState(id: string, st: ListingState): void {
   db()
     .prepare(
-      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, rating, labels, referred_by, doc_ids, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, rating, labels, referred_by, doc_ids, offer, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(listing_id) DO UPDATE SET status = excluded.status, note = excluded.note, contacted_at = excluded.contacted_at,
          next_at = excluded.next_at, next_note = excluded.next_note, follow_ups = excluded.follow_ups, rating = excluded.rating,
-         labels = excluded.labels, referred_by = excluded.referred_by, doc_ids = excluded.doc_ids, updated_at = excluded.updated_at`,
+         labels = excluded.labels, referred_by = excluded.referred_by, doc_ids = excluded.doc_ids, offer = excluded.offer, updated_at = excluded.updated_at`,
     )
-    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.rating ?? 0, JSON.stringify(st.labels ?? []), st.referredBy ?? '', JSON.stringify(st.docIds ?? []), st.updatedAt);
+    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.rating ?? 0, JSON.stringify(st.labels ?? []), st.referredBy ?? '', JSON.stringify(st.docIds ?? []), st.offer ? JSON.stringify(st.offer) : null, st.updatedAt);
   // Events are append-mostly; rewriting this one application's few rows keeps the order exact.
   db().prepare('DELETE FROM events WHERE listing_id = ?').run(id);
   const insert = db().prepare('INSERT INTO events (id, listing_id, kind, at, time, status, contact_id, round, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');

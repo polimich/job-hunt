@@ -1,9 +1,9 @@
 /** One reactive copy of the database, plus the calls that change it. */
 import { computed, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
-import { ENDINGS, emptyState, today, withStatus } from '../shared/pipeline';
+import { ENDINGS, emptyOffer, emptyState, today, withStatus } from '../shared/pipeline';
 import { celebrate } from './lib/celebrate';
-import { STATUSES, type Company, type Contact, type Db, type Doc, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
+import { STATUSES, type Company, type Contact, type Db, type Doc, type Offer, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
 import { applyFilters, DEFAULT_FILTERS, effectiveStatus, type Filters } from './filters';
 import { buildIndex, search } from './search';
 
@@ -20,6 +20,7 @@ const EMPTY: Db = {
     followUpDays: 7,
     autoRefresh: true,
     weeklyGoal: 5,
+    skills: [],
     templates: {
       followUp: { cs: { subject: '', body: '' }, en: { subject: '', body: '' } },
       thankYou: { cs: { subject: '', body: '' }, en: { subject: '', body: '' } },
@@ -96,7 +97,9 @@ export const statusCounts = computed(() => {
 
 export const stateOf = (id: string): ListingState => db.state[id] ?? emptyState();
 
-type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote' | 'rating' | 'labels' | 'referredBy' | 'docIds'>>;
+type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote' | 'rating' | 'labels' | 'referredBy' | 'docIds'>> & {
+  offer?: Partial<Offer> | null;
+};
 
 export async function setState(id: string, patch: StateChange): Promise<void> {
   // Show the change at once; the server answer then replaces it with what was stored.
@@ -104,7 +107,8 @@ export async function setState(id: string, patch: StateChange): Promise<void> {
   let shown = prev ?? emptyState();
   if (patch.status) shown = withStatus(shown, patch.status, today(), db.settings);
   if (patch.status && patch.status !== prev?.status) celebrate(patch.status);
-  db.state[id] = { ...shown, ...patch };
+  const { offer, ...plain } = patch;
+  db.state[id] = { ...shown, ...plain, ...(offer === null ? { offer: undefined } : offer ? { offer: { ...emptyOffer(), ...shown.offer, ...offer } } : {}) };
   try {
     db.state[id] = await api<ListingState>(`/state/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) });
   } catch (e) {
@@ -310,3 +314,11 @@ export async function deleteDoc(id: string): Promise<void> {
   db.docs = db.docs.filter((d) => d.id !== id);
   for (const st of Object.values(db.state)) st.docIds = (st.docIds ?? []).filter((d) => d !== id);
 }
+
+/** Applications with an offer, or at the offer stage. */
+export const offers = computed(() =>
+  db.listings.filter((l) => {
+    const st = db.state[l.id];
+    return !!st && (!!st.offer || st.status === 'offer' || st.status === 'accepted');
+  }),
+);

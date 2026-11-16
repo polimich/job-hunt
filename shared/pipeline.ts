@@ -128,3 +128,20 @@ export function cleanLabels(raw: unknown): string[] {
   }
   return out.slice(0, 12);
 }
+
+export interface SkillMatch {
+  /** 0–100, share of the posting's stack I have; null when the posting names no stack. */
+  percent: number | null;
+  have: string[];
+  missing: string[];
+}
+
+/** Which of a posting's technologies I know, case-insensitively. */
+export function skillMatch(tags: string[], skills: string[]): SkillMatch {
+  const mine = new Set(skills.map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const have = tags.filter((t) => mine.has(t.toLowerCase()));
+  const missing = tags.filter((t) => !mine.has(t.toLowerCase()));
+  return { percent: tags.length ? Math.round((have.length / tags.length) * 100) : null, have, missing };
+}
+
+export const emptyOffer = (): import('./types.ts').Offer => ({ salary: 0, bonus: '', remote: '', vacation: 0, contract: '', start: '', deadline: '', note: '' });

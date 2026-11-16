@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
-import { addDays, cleanLabels, emptyState, followedUp, newEventId, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
-import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Task, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { addDays, cleanLabels, emptyOffer, emptyState, followedUp, newEventId, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
+import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
 import { calendar, feed, interviewItem } from './ics.ts';
@@ -20,12 +20,28 @@ const app = new Hono();
 app.get('/api/db', (c) => c.json(loadDb()));
 
 /** Fields of a state that can be set directly; history goes through the event routes. */
-type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string; rating: number; labels: string[]; referredBy: string; docIds: string[] }>;
+type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string; rating: number; labels: string[]; referredBy: string; docIds: string[]; offer: Partial<Offer> | null }>;
 
 function updateState(id: string, change: (prev: ListingState, on: string, settings: Settings) => ListingState): ListingState {
   const next = { ...change(getState(id) ?? emptyState(), today(), loadSettings()), updatedAt: new Date().toISOString() };
   putState(id, next);
   return next;
+}
+
+function cleanOffer(o: Offer): Offer {
+  const text = (v: unknown, n = 200) => String(v ?? '').trim().slice(0, n);
+  const day = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
+  const num = (v: unknown, max: number) => Math.min(Math.max(Math.round(Number(v) || 0), 0), max);
+  return {
+    salary: num(o.salary, 10_000_000),
+    bonus: text(o.bonus),
+    remote: text(o.remote, 60),
+    vacation: num(o.vacation, 100),
+    contract: text(o.contract, 60),
+    start: day(o.start),
+    deadline: day(o.deadline),
+    note: text(o.note, 2000),
+  };
 }
 
 const isDate = (v: unknown): v is string => typeof v === 'string' && (v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v));
@@ -45,6 +61,8 @@ app.put('/api/state/:id', async (c) => {
       if (typeof patch.rating === 'number') next = { ...next, rating: Math.min(Math.max(Math.round(patch.rating), 0), 5) };
       if (patch.labels !== undefined) next = { ...next, labels: cleanLabels(patch.labels) };
       if (typeof patch.referredBy === 'string') next = { ...next, referredBy: patch.referredBy.trim().slice(0, 120) };
+      if (patch.offer === null) next = { ...next, offer: undefined };
+      else if (patch.offer && typeof patch.offer === 'object') next = { ...next, offer: cleanOffer({ ...(next.offer ?? emptyOffer()), ...patch.offer }) };
       if (Array.isArray(patch.docIds)) {
         const known = new Set(loadDocs().map((d) => d.id));
         next = { ...next, docIds: [...new Set(patch.docIds.filter((d) => known.has(d)))] };
@@ -141,6 +159,7 @@ app.put('/api/settings', async (c) => {
   next.followUpDays = Math.min(Math.max(Math.round(Number(next.followUpDays) || 7), 1), 60);
   next.autoRefresh = next.autoRefresh !== false;
   next.weeklyGoal = Math.min(Math.max(Math.round(Number(next.weeklyGoal) || 5), 1), 50);
+  next.skills = Array.isArray(next.skills) ? [...new Set(next.skills.map((x) => String(x).trim()).filter(Boolean))].slice(0, 60) : [];
   saveSettings(next);
   return c.json(next);
 });

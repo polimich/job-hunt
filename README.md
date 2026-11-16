@@ -76,6 +76,12 @@ The whole calendar (interviews, next steps, tasks) is a subscribable feed at
 Settings → Dokumenty (stored in `data/docs/`), tick which ones went with each application, and Přehled
 shows the answer rate per document.
 
+Settings → Profil holds your skills; each posting shows what share of its stack you know and what is
+missing. An application at the offer stage gets an offer card (salary, bonuses, home office, holiday,
+start, answer deadline); **Nabídky** compares offers side by side, and the deadline lands in the
+calendar feed. Přehled also shows the median number of days until companies answer, overall and per
+source.
+
 Roles found elsewhere (referral, recruiter, careers page) are added with **Přidat pozici**. Pasting a URL
 tries to fill in title, company and text. Refresh never re-checks or closes these.
 

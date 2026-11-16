@@ -40,6 +40,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { bestEmail, EMAIL_KIND_LABEL, formatDate, looksCzech, mailto, PLACE_LABEL } from '../format';
 import { highlight } from '../search';
+import { skillMatch } from '../../shared/pipeline';
 import { companyById, contactsOf, db, deleteListing, filters, latestAdded, patchListing, setState, statusOf } from '../store';
 import CompanyAvatar from './CompanyAvatar.vue';
 import ContactsCard from './ContactsCard.vue';
@@ -47,6 +48,7 @@ import LabelsEditor from './LabelsEditor.vue';
 import RatingStars from './RatingStars.vue';
 import FitBadge from './FitBadge.vue';
 import NextStep from './NextStep.vue';
+import OfferCard from './OfferCard.vue';
 import TasksCard from './TasksCard.vue';
 import SalaryRange from './SalaryRange.vue';
 import StatusButtons from './StatusButtons.vue';
@@ -140,7 +142,7 @@ const text = computed(() => {
   return props.full || t.length <= PREVIEW ? t : `${t.slice(0, PREVIEW)}…`;
 });
 const parts = computed(() => highlight(text.value, filters.query));
-const hot = new Set(['React', 'TypeScript', 'Next.js', '.NET', 'Vue', 'MUI']);
+const match = computed(() => skillMatch(props.listing.tags, db.settings.skills ?? []));
 
 const meta = computed(() =>
   [
@@ -217,6 +219,8 @@ const meta = computed(() =>
       </div>
       <StatusButtons :status="status" :show-keys="showKeys" @set="setStatus" />
     </div>
+
+    <OfferCard v-if="state?.offer || status === 'offer' || status === 'accepted'" :id="listing.id" />
 
     <NextStep :id="listing.id" />
 
@@ -339,16 +343,28 @@ const meta = computed(() =>
 
     <!-- Stack -->
     <section class="flex flex-col gap-2">
-      <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Stack</h3>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Stack</h3>
+        <span
+          v-if="match.percent !== null"
+          :class="cn(
+            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold',
+            match.percent >= 70 ? 'bg-(--st-interview-bg) text-(--st-interview-fg)' : match.percent >= 40 ? 'bg-(--st-interested-bg) text-(--st-interested-fg)' : 'bg-muted text-muted-foreground',
+          )"
+          :title="match.missing.length ? `Chybí: ${match.missing.join(', ')}` : 'Umíš všechno ze stacku'"
+        >
+          <SparklesIcon class="size-3.5" /> Umíš {{ match.percent }} % stacku
+        </span>
+      </div>
       <div v-if="listing.tags.length" class="flex flex-wrap gap-1.5">
         <Badge
-          v-for="t in listing.tags"
+          v-for="t in match.have"
           :key="t"
-          :variant="hot.has(t) ? 'default' : 'outline'"
-          :class="hot.has(t) ? 'bg-primary/10 text-primary' : 'text-muted-foreground'"
-        >{{ t }}</Badge>
+          class="bg-(--st-interview-bg) text-(--st-interview-fg)"
+        ><CheckIcon /> {{ t }}</Badge>
+        <Badge v-for="t in match.missing" :key="t" variant="outline" class="border-dashed text-muted-foreground">{{ t }}</Badge>
       </div>
-      <p class="text-sm">{{ listing.stack }}</p>
+      <p v-if="!listing.tags.length && listing.stack" class="text-sm">{{ listing.stack }}</p>
       <p v-if="listing.vue" class="flex items-start gap-2 text-sm">
         <Badge class="bg-success-soft text-success">Vue</Badge>
         <span class="text-muted-foreground">{{ listing.vue }}</span>

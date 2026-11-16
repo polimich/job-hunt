@@ -126,6 +126,24 @@ export const INTERVIEW_ROUNDS: { id: InterviewRound; label: string }[] = [
   { id: 'other', label: 'Jiné' },
 ];
 
+/** What an offer actually says, for comparing them side by side. */
+export interface Offer {
+  /** Gross CZK per month; 0 = not known yet. */
+  salary: number;
+  bonus: string;
+  /** Home-office days a week, e.g. "2", "full remote". */
+  remote: string;
+  /** Days of holiday a year; 0 = not known. */
+  vacation: number;
+  /** HPP, IČO… */
+  contract: string;
+  /** yyyy-mm-dd I can start, '' unknown. */
+  start: string;
+  /** yyyy-mm-dd I must answer by, '' none. */
+  deadline: string;
+  note: string;
+}
+
 /** A file I send with applications: a CV version, a cover letter, a portfolio. */
 export interface Doc {
   id: string;
@@ -188,6 +206,8 @@ export interface ListingState {
   referredBy: string;
   /** Documents sent with this application (Doc ids). */
   docIds: string[];
+  /** The offer, once there is one. */
+  offer?: Offer;
   events: TrackEvent[];
   updatedAt: string;
 }
@@ -227,6 +247,8 @@ export interface Settings {
   autoRefresh: boolean;
   /** Applications I want to send per week. */
   weeklyGoal: number;
+  /** My skills, matched against each posting's stack. */
+  skills: string[];
   /** Follow-up, thank-you and decline e-mails; {company}, {title} and {name} are replaced. */
   templates: Record<TemplateKind, { cs: MailTemplate; en: MailTemplate }>;
 }

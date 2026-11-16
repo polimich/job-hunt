@@ -70,6 +70,7 @@ async function backupNow() {
 }
 
 const keywords = ref(form.keywords.join(', '));
+const skills = ref((form.skills ?? []).join(', '));
 const vueKeywords = ref(form.vueKeywords.join(', '));
 const saving = ref(false);
 
@@ -78,7 +79,7 @@ const split = (text: string) => text.split(',').map((t) => t.trim()).filter(Bool
 async function save() {
   saving.value = true;
   try {
-    await saveSettings({ ...form, keywords: split(keywords.value), vueKeywords: split(vueKeywords.value) });
+    await saveSettings({ ...form, keywords: split(keywords.value), vueKeywords: split(vueKeywords.value), skills: split(skills.value) });
     toast.success('Nastavení uloženo');
   } catch (e) {
     toast.error('Uložení selhalo', { description: e instanceof Error ? e.message : String(e) });
@@ -169,10 +170,15 @@ async function save() {
 
     <Card>
       <CardHeader>
-        <CardTitle class="flex items-center gap-2"><WalletIcon class="size-4 text-muted-foreground" /> Mzda</CardTitle>
-        <CardDescription>Firmy, jejichž horní odhad je pod minimem, se zvýrazní červeně.</CardDescription>
+        <CardTitle class="flex items-center gap-2"><WalletIcon class="size-4 text-muted-foreground" /> Profil a mzda</CardTitle>
+        <CardDescription>Tvoje dovednosti a mzdové minimum. Firmy, jejichž horní odhad je pod minimem, se zvýrazní červeně.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent class="flex flex-col gap-5">
+        <div class="flex flex-col gap-2">
+          <Label for="skills">Moje dovednosti</Label>
+          <Input id="skills" v-model="skills" placeholder="React, TypeScript, Vue…" />
+          <p class="text-xs text-muted-foreground">Oddělené čárkou. V detailu pozice uvidíš, kolik procent stacku umíš a co chybí.</p>
+        </div>
         <div class="flex max-w-xs flex-col gap-2">
           <Label for="min-salary">Moje minimum, hrubého měsíčně</Label>
           <div class="relative">

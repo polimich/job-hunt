@@ -80,6 +80,7 @@ export function feed(data: Db): string {
     const l = byId.get(id);
     if (!l) continue;
     for (const e of st.events) if (e.kind === 'interview') items.push(interviewItem(l, e, e.contactId ? contact.get(e.contactId) : undefined));
+    if (st.offer?.deadline) items.push({ uid: `offer-${id}`, summary: `🤝 Odpovědět na nabídku: ${l.company}`, description: l.title, date: st.offer.deadline });
     if (st.nextAt) items.push({ uid: `next-${id}`, summary: `↻ ${l.company}: ${st.nextNote || 'Ozvat se'}`, description: l.title, url: l.url || undefined, date: st.nextAt });
   }
   for (const t of data.tasks) {

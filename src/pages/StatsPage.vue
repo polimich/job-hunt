@@ -5,6 +5,7 @@ import type { Status } from '../../shared/types';
 import { statusMeta } from '@/lib/status';
 import { cn } from '@/lib/utils';
 import StatTile from '../components/StatTile.vue';
+import { days } from '../format';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import PageHeader from '../components/PageHeader.vue';
 import { computeStats } from '../stats';
@@ -15,7 +16,13 @@ const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)} %` : '�
 
 const tiles = computed(() => [
   { label: 'Odesláno', value: stats.value.applied, icon: SendIcon, color: 'applied' as Status, hint: `${stats.value.pending} čeká na odpověď` },
-  { label: 'Míra odpovědí', value: pct(stats.value.answered, stats.value.applied), icon: MessagesSquareIcon, color: 'talking' as Status, hint: `${stats.value.answered} z ${stats.value.applied} odpovědělo` },
+  {
+    label: 'Míra odpovědí',
+    value: pct(stats.value.answered, stats.value.applied),
+    icon: MessagesSquareIcon,
+    color: 'talking' as Status,
+    hint: `${stats.value.answered} z ${stats.value.applied}${stats.value.medianReplyDays !== null ? ` · odpověď za ~${days(stats.value.medianReplyDays)}` : ''}`,
+  },
   { label: 'Pohovory', value: stats.value.interviews, icon: CalendarCheckIcon, color: 'interview' as Status, hint: `${pct(stats.value.interviews, stats.value.applied)} z odeslaných` },
   { label: 'Nabídky', value: stats.value.offers, icon: HandshakeIcon, color: 'offer' as Status, hint: `${stats.value.rejected} zamítli · ${stats.value.ghosted} bez odpovědi` },
 ]);
@@ -95,7 +102,7 @@ const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', jobscz: 'jo
         <p class="mb-3 text-xs text-muted-foreground">Odkud přišly pozice, na které jsi odeslal(a) přihlášku, a kolik z nich odpovědělo.</p>
         <table class="w-full text-sm">
           <thead class="text-left text-xs text-muted-foreground">
-            <tr><th class="py-1.5 font-medium">Zdroj</th><th class="py-1.5 text-right font-medium">Odesláno</th><th class="py-1.5 text-right font-medium">Odpověděli</th><th class="py-1.5 text-right font-medium">Míra</th></tr>
+            <tr><th class="py-1.5 font-medium">Zdroj</th><th class="py-1.5 text-right font-medium">Odesláno</th><th class="py-1.5 text-right font-medium">Odpověděli</th><th class="py-1.5 text-right font-medium">Míra</th><th class="hidden py-1.5 text-right font-medium sm:table-cell">Odpověď za</th></tr>
           </thead>
           <tbody class="divide-y">
             <tr v-for="r in stats.bySource" :key="r.source">

@@ -5,6 +5,7 @@ import {
   BriefcaseBusinessIcon,
   Building2Icon,
   ChartColumnIcon,
+  HandshakeIcon,
   HistoryIcon,
   LayoutListIcon,
   PlusIcon,
@@ -33,7 +34,7 @@ import { statusMeta } from '@/lib/status';
 import { colorMode } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import AddListingDialog from './components/AddListingDialog.vue';
-import { addOpen, db, due, dueTasks, filters, load, loaded, loadError, progress, resumeRefresh, startRefresh, statusCounts } from './store';
+import { addOpen, db, due, dueTasks, filters, offers, load, loaded, loadError, progress, resumeRefresh, startRefresh, statusCounts } from './store';
 import { formatDateTime } from './format';
 
 onMounted(async () => {
@@ -53,6 +54,9 @@ const nav = computed(() => [
   { to: '/pozice', label: 'Pozice', icon: LayoutListIcon, count: openCount.value, active: route.path.startsWith('/pozice') },
   { to: '/tabule', label: 'Tabule', icon: SquareKanbanIcon, count: undefined, active: route.path.startsWith('/tabule') },
   { to: '/prehled', label: 'Přehled', icon: ChartColumnIcon, count: undefined, active: route.path.startsWith('/prehled') },
+  ...(offers.value.length
+    ? [{ to: '/nabidky', label: 'Nabídky', icon: HandshakeIcon, count: offers.value.length, active: route.path.startsWith('/nabidky') }]
+    : []),
   { to: '/firmy', label: 'Firmy', icon: Building2Icon, count: db.companies.length, active: route.path.startsWith('/firmy') },
   { to: '/zmeny', label: 'Změny', icon: HistoryIcon, count: undefined, active: route.path.startsWith('/zmeny') },
   { to: '/nastaveni', label: 'Nastavení', icon: Settings2Icon, count: undefined, active: route.path.startsWith('/nastaveni') },

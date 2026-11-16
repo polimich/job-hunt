@@ -80,12 +80,12 @@ describe('computeStats', () => {
     const stats = computeStats([listing('a', 'linkedin'), listing('b', 'jobscz'), listing('c', 'linkedin')], { a, b, c }, DAY, 2);
     expect(stats).toMatchObject({ applied: 3, answered: 2, interviews: 1, rejected: 1, pending: 1 });
     expect(stats.weeks).toEqual([{ start: '2026-11-09', n: 1 }, { start: '2026-11-16', n: 2 }]);
-    expect(stats.bySource[0]).toEqual({ source: 'linkedin', applied: 2, answered: 1 });
+    expect(stats.bySource[0]).toEqual({ source: 'linkedin', applied: 2, answered: 1, medianDays: 6 });
   });
   it('counts referrals as their own source', () => {
     const a = { ...withStatus(emptyState(), 'applied', DAY, S), referredBy: 'Petr' };
     const stats = computeStats([listing('a', 'linkedin')], { a }, DAY, 1);
-    expect(stats.bySource).toEqual([{ source: 'referral', applied: 1, answered: 0 }]);
+    expect(stats.bySource).toEqual([{ source: 'referral', applied: 1, answered: 0, medianDays: null }]);
   });
   it('finds Monday', () => {
     expect(mondayOf('2026-11-22')).toBe('2026-11-16');
@@ -140,5 +140,30 @@ describe('mailto', () => {
     const l = { title: 'Dev', company: 'Acme' } as Listing;
     expect(decodeURIComponent(mailto('a@b.cz', '{title}', 'Hi{name}, {company}', l, 'Jana Nováková'))).toBe('mailto:a@b.cz?subject=Dev&body=Hi Jana, Acme');
     expect(decodeURIComponent(mailto('', 's', 'Hi{name},', l))).toBe('mailto:?subject=s&body=Hi,');
+  });
+});
+
+import { skillMatch } from '../shared/pipeline';
+import { median, replyDays } from '../src/stats';
+
+describe('skillMatch', () => {
+  it('splits a stack into what I have and what is missing', () => {
+    expect(skillMatch(['React', 'TypeScript', 'AWS', 'Docker'], ['react', 'TypeScript'])).toEqual({ percent: 50, have: ['React', 'TypeScript'], missing: ['AWS', 'Docker'] });
+    expect(skillMatch([], ['React']).percent).toBeNull();
+  });
+});
+
+describe('reply time', () => {
+  it('measures days from sending to their first answer', () => {
+    let st = withStatus(emptyState(), 'applied', '2026-11-02', S);
+    expect(replyDays(st)).toBeNull();
+    st = withStatus(st, 'talking', '2026-11-06', S);
+    expect(replyDays(st)).toBe(4);
+    expect(replyDays(withStatus(withStatus(emptyState(), 'applied', '2026-11-02', S), 'rejected', '2026-11-12', S))).toBe(10);
+  });
+  it('takes the median', () => {
+    expect(median([5, 1, 3])).toBe(3);
+    expect(median([1, 2, 3, 6])).toBe(3);
+    expect(median([])).toBeNull();
   });
 });

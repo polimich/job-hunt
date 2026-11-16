@@ -130,6 +130,10 @@ const MIGRATIONS: string[] = [
   );
   ALTER TABLE state ADD COLUMN doc_ids TEXT NOT NULL DEFAULT '[]';
   `,
+  // 5: offer details per application.
+  `
+  ALTER TABLE state ADD COLUMN offer TEXT;
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

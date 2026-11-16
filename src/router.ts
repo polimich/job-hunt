@@ -7,6 +7,7 @@ export const router = createRouter({
     { path: '/pozice', name: 'list', component: () => import('./pages/ListPage.vue') },
     { path: '/tabule', name: 'board', component: () => import('./pages/BoardPage.vue') },
     { path: '/prehled', name: 'stats', component: () => import('./pages/StatsPage.vue') },
+    { path: '/nabidky', name: 'offers', component: () => import('./pages/OffersPage.vue') },
     { path: '/pozice/:id', name: 'listing', component: () => import('./pages/ListingPage.vue'), props: true },
     { path: '/firmy', name: 'companies', component: () => import('./pages/CompaniesPage.vue') },
     { path: '/firmy/:id', name: 'company', component: () => import('./pages/CompanyPage.vue'), props: true },
