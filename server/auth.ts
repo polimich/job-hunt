@@ -11,6 +11,8 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 const COOKIE = 'jh_session';
 const DAYS = 30;
 const MAX_FAILS = 5;
+/** Across all clients, since a forwarded IP can be faked. */
+const MAX_FAILS_ALL = 30;
 const LOCK_MS = 15 * 60_000;
 
 const hmac = (key: string, data: string) => createHmac('sha256', key).update(data).digest('base64url');
@@ -41,13 +43,17 @@ const fails = new Map<string, { n: number; until: number }>();
 const clientOf = (c: Context) => c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'local';
 
 export function locked(client: string, now = Date.now()): boolean {
-  const f = fails.get(client);
-  return !!f && f.n >= MAX_FAILS && f.until > now;
+  const over = (key: string, max: number) => {
+    const f = fails.get(key);
+    return !!f && f.n >= max && f.until > now;
+  };
+  return over(client, MAX_FAILS) || over('*', MAX_FAILS_ALL);
 }
 function failed(client: string, now = Date.now()): void {
-  const f = fails.get(client);
-  const n = f && f.until > now ? f.n + 1 : 1;
-  fails.set(client, { n, until: now + LOCK_MS });
+  for (const key of [client, '*']) {
+    const f = fails.get(key);
+    fails.set(key, { n: f && f.until > now ? f.n + 1 : 1, until: now + LOCK_MS });
+  }
 }
 
 const page = (error = '') => `<!doctype html>
@@ -70,7 +76,8 @@ ${error ? `<div class="err" role="alert">${error}</div>` : ''}
 <button type="submit">Přihlásit</button>
 </form></body></html>`;
 
-const secure = (c: Context) => (c.req.header('x-forwarded-proto') ?? new URL(c.req.url).protocol.replace(':', '')) === 'https';
+// A hosted copy (PUBLIC_HOST) is served over HTTPS by the proxy in front of it.
+const secure = (c: Context) => !!process.env.PUBLIC_HOST || (c.req.header('x-forwarded-proto') ?? new URL(c.req.url).protocol.replace(':', '')) === 'https';
 
 /** Routes and middleware; mount before everything else. */
 export function auth(password: string | undefined): MiddlewareHandler {
