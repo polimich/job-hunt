@@ -7,9 +7,10 @@ import { Hono } from 'hono';
 import { addDays, emptyState, followedUp, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
 import { STATUSES, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { manualListing, preview } from './manual.ts';
-import { startDailyJobs } from './snapshot.ts';
+import { toCsv } from './export.ts';
+import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, loadCompanies, loadDb, loadListings, loadSettings, loadState, saveCompanies, saveListings, saveSettings, saveState } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteListing, getState, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
 
 const app = new Hono();
 
@@ -19,10 +20,8 @@ app.get('/api/db', (c) => c.json(loadDb()));
 type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string }>;
 
 function updateState(id: string, change: (prev: ListingState, on: string, settings: Settings) => ListingState): ListingState {
-  const state = loadState();
-  const next = { ...change(state[id] ?? emptyState(), today(), loadSettings()), updatedAt: new Date().toISOString() };
-  state[id] = next;
-  saveState(state);
+  const next = { ...change(getState(id) ?? emptyState(), today(), loadSettings()), updatedAt: new Date().toISOString() };
+  putState(id, next);
   return next;
 }
 
@@ -85,9 +84,8 @@ app.post('/api/listings', async (c) => {
   const companies = loadCompanies();
   const listing = manualListing(input, companies, today());
   if (listings.some((l) => l.id === listing.id)) return c.json({ error: 'Tahle pozice už v seznamu je', id: listing.id }, 409);
-  listings.push(listing);
   saveCompanies(companies);
-  saveListings(listings);
+  saveListing(listing);
   return c.json({ listing, company: companies.find((x) => x.id === listing.companyId) });
 });
 
@@ -98,17 +96,12 @@ app.delete('/api/listings/:id', (c) => {
   const listing = listings.find((l) => l.id === id);
   if (!listing) return c.json({ error: 'not found' }, 404);
   if (!listing.manual) return c.json({ error: 'only listings added by hand can be deleted' }, 400);
-  const rest = listings.filter((l) => l.id !== id);
-  saveListings(rest);
+  deleteListing(id);
   // Drop the company too if this listing created it and nothing else uses it.
-  const companies = loadCompanies();
-  const company = companies.find((x) => x.id === listing.companyId);
-  if (company && !company.salary && !company.emails.length && !rest.some((l) => l.companyId === company.id)) {
-    saveCompanies(companies.filter((x) => x !== company));
+  const company = loadCompanies().find((x) => x.id === listing.companyId);
+  if (company && !company.salary && !company.emails.length && !listings.some((l) => l.id !== id && l.companyId === company.id)) {
+    deleteCompany(company.id);
   }
-  const state = loadState();
-  delete state[id];
-  saveState(state);
   return c.json({ ok: true });
 });
 
@@ -120,7 +113,7 @@ app.patch('/api/listings/:id', async (c) => {
   if (!listing) return c.json({ error: 'not found' }, 404);
   if (typeof patch.fit === 'number' && patch.fit >= 1 && patch.fit <= 5) listing.fit = Math.round(patch.fit);
   if (typeof patch.recommended === 'boolean') listing.recommended = patch.recommended;
-  saveListings(listings);
+  saveListing(listing);
   return c.json(listing);
 });
 
@@ -138,6 +131,22 @@ app.put('/api/settings', async (c) => {
   saveSettings(next);
   return c.json(next);
 });
+
+/** Everything, as one JSON file (backup / moving to another machine). */
+app.get('/api/export.json', (c) => {
+  c.header('Content-Disposition', `attachment; filename="job-hunt-${today()}.json"`);
+  return c.json(loadDb());
+});
+
+/** Applications as CSV for a spreadsheet. */
+app.get('/api/export.csv', (c) => {
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', `attachment; filename="job-hunt-${today()}.csv"`);
+  return c.body(toCsv(loadDb()));
+});
+
+app.get('/api/backups', (c) => c.json(listBackups()));
+app.post('/api/backups', (c) => c.json({ file: backup(today(), true) }));
 
 app.post('/api/refresh', (c) => c.json({ started: startRefresh(), progress: getProgress() }));
 app.get('/api/refresh', (c) => c.json(getProgress()));

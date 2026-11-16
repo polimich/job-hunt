@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
+import { AlarmClockIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
 import type { Settings } from '../../shared/types';
 import PageHeader from '../components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { db, saveSettings } from '../store';
 
 const form = reactive<Settings>(structuredClone(JSON.parse(JSON.stringify(db.settings)) as Settings));
+const backups = ref<string[]>([]);
+const loadBackups = async () => (backups.value = (await (await fetch('/api/backups')).json()) as string[]);
+onMounted(() => void loadBackups().catch(() => undefined));
+async function backupNow() {
+  try {
+    const res = await fetch('/api/backups', { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    await loadBackups();
+    toast.success('Záloha uložena', { description: backups.value[0] });
+  } catch (e) {
+    toast.error('Záloha selhala', { description: e instanceof Error ? e.message : String(e) });
+  }
+}
+
 const keywords = ref(form.keywords.join(', '));
 const vueKeywords = ref(form.vueKeywords.join(', '));
 const saving = ref(false);
@@ -126,6 +140,26 @@ async function save() {
             <span class="text-xs text-muted-foreground">Když běží server, obnoví se sám mezi 7. a 23. hodinou, pokud poslední obnovení je starší než 20 hodin.</span>
           </span>
         </Label>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2"><DatabaseIcon class="size-4 text-muted-foreground" /> Data a zálohy</CardTitle>
+        <CardDescription>
+          Vše je v SQLite souboru <code class="rounded bg-muted px-1 font-mono text-xs">data/jobhunt.db</code>. Server si každý den uloží kopii do
+          <code class="rounded bg-muted px-1 font-mono text-xs">data/backups/</code> a drží posledních 30.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="flex flex-col gap-4">
+        <div class="flex flex-wrap gap-2">
+          <Button as="a" href="/api/export.csv" variant="outline" type="button"><DownloadIcon /> Export CSV (tabulka)</Button>
+          <Button as="a" href="/api/export.json" variant="outline" type="button"><DownloadIcon /> Export JSON (vše)</Button>
+          <Button variant="outline" type="button" @click="backupNow"><HardDriveDownloadIcon /> Zálohovat teď</Button>
+        </div>
+        <p v-if="backups.length" class="text-xs text-muted-foreground">
+          Poslední záloha: <span class="font-medium text-foreground">{{ backups[0] }}</span> · celkem {{ backups.length }}
+        </p>
       </CardContent>
     </Card>
 

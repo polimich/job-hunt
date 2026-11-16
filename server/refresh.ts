@@ -9,7 +9,7 @@ import * as jobscz from './sources/jobscz.ts';
 import * as linkedin from './sources/linkedin.ts';
 import * as startupjobs from './sources/startupjobs.ts';
 import type { Candidate, Detail } from './sources/types.ts';
-import { loadCompanies, loadListings, loadRuns, loadSettings, saveCompanies, saveListings, saveRuns, slug } from './store.ts';
+import { addRun, loadCompanies, loadListings, loadSettings, saveCompanies, saveListings, slug } from './store.ts';
 
 /** Reading a new posting costs a rate-limited request, so one run takes at most this many. */
 const MAX_NEW_PER_RUN = 40;
@@ -107,7 +107,7 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
   }
   saveListings(listings);
   if (!searchNew) {
-    saveRuns([result, ...loadRuns()].slice(0, 30));
+    addRun(result);
     return result;
   }
 
@@ -159,7 +159,7 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
 
   saveCompanies(companies);
   saveListings(listings);
-  saveRuns([result, ...loadRuns()].slice(0, 30));
+  addRun(result);
   return result;
 }
 

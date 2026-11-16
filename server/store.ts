@@ -1,11 +1,13 @@
-/** The database is a handful of JSON files in data/. Small enough to read and write whole. */
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+/**
+ * Data access over SQLite. Functions keep the shape the rest of the server already uses
+ * (whole lists for listings/companies, one record for state), backed by real tables.
+ */
+import type { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { Company, Db, Listing, ListingState, RefreshRun, Settings } from '../shared/types.ts';
+import type { Company, Db, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import { DATA_DIR, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
-export const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'data');
+export { DATA_DIR };
 
 const DEFAULT_SETTINGS: Settings = {
   introCs: { subject: 'Zájem o pozici {title}', body: '' },
@@ -18,42 +20,244 @@ const DEFAULT_SETTINGS: Settings = {
   autoRefresh: true,
 };
 
-function read<T>(name: string, fallback: T): T {
-  const file = join(DATA_DIR, name);
-  if (!existsSync(file)) return fallback;
-  return JSON.parse(readFileSync(file, 'utf8')) as T;
+type Row = Record<string, unknown>;
+const json = <T>(v: unknown, fallback: T): T => (typeof v === 'string' && v ? (JSON.parse(v) as T) : fallback);
+
+let conn: DatabaseSync | undefined;
+
+/** The open database; created and migrated (including the one-time JSON import) on first use. */
+export function db(): DatabaseSync {
+  if (!conn) {
+    conn = openDb();
+    importLegacyOnce(conn);
+  }
+  return conn;
 }
 
-/** Write through a temp file so a crash mid-write cannot leave half a file. */
-function write(name: string, value: unknown): void {
-  mkdirSync(DATA_DIR, { recursive: true });
-  const file = join(DATA_DIR, name);
-  writeFileSync(`${file}.tmp`, `${JSON.stringify(value, null, 1)}\n`);
-  renameSync(`${file}.tmp`, file);
+/** For tests: start over with a fresh database. */
+export function useDb(next: DatabaseSync): void {
+  conn = next;
 }
 
-export const loadListings = () => read<Listing[]>('listings.json', []);
-export const saveListings = (v: Listing[]) => write('listings.json', v);
-export const loadCompanies = () => read<Company[]>('companies.json', []);
-export const saveCompanies = (v: Company[]) => write('companies.json', v);
+// ---------- listings ----------
+
+const toListing = (r: Row): Listing => ({
+  id: r.id as string,
+  companyId: r.company_id as string,
+  company: r.company as string,
+  title: r.title as string,
+  url: r.url as string,
+  source: r.source as Listing['source'],
+  sourceId: r.source_id as string,
+  location: r.location as string,
+  mode: r.mode as string,
+  place: r.place as Listing['place'],
+  contract: r.contract as string,
+  stack: r.stack as string,
+  tags: json<string[]>(r.tags, []),
+  salaryPosted: r.salary_posted as string,
+  benefits: r.benefits as string,
+  fit: Number(r.fit),
+  fitSource: r.fit_source as Listing['fitSource'],
+  recommended: !!r.recommended,
+  strengths: r.strengths as string,
+  weaknesses: r.weaknesses as string,
+  vue: r.vue as string,
+  text: r.text as string,
+  firstSeen: r.first_seen as string,
+  lastChecked: r.last_checked as string,
+  open: !!r.open,
+  ...(r.closed_at ? { closedAt: r.closed_at as string } : {}),
+  ...(r.manual ? { manual: true } : {}),
+});
+
+const LISTING_UPSERT = `
+  INSERT INTO listings (id, company_id, company, title, url, source, source_id, location, mode, place, contract, stack, tags,
+    salary_posted, benefits, fit, fit_source, recommended, strengths, weaknesses, vue, text, first_seen, last_checked, open, closed_at, manual)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET company_id = excluded.company_id, company = excluded.company, title = excluded.title, url = excluded.url,
+    source = excluded.source, source_id = excluded.source_id, location = excluded.location, mode = excluded.mode, place = excluded.place,
+    contract = excluded.contract, stack = excluded.stack, tags = excluded.tags, salary_posted = excluded.salary_posted, benefits = excluded.benefits,
+    fit = excluded.fit, fit_source = excluded.fit_source, recommended = excluded.recommended, strengths = excluded.strengths,
+    weaknesses = excluded.weaknesses, vue = excluded.vue, text = excluded.text, first_seen = excluded.first_seen,
+    last_checked = excluded.last_checked, open = excluded.open, closed_at = excluded.closed_at, manual = excluded.manual`;
+
+function upsertListing(l: Listing): void {
+  db()
+    .prepare(LISTING_UPSERT)
+    .run(
+      l.id, l.companyId, l.company, l.title, l.url, l.source, l.sourceId, l.location, l.mode, l.place, l.contract, l.stack,
+      JSON.stringify(l.tags), l.salaryPosted, l.benefits, l.fit, l.fitSource, l.recommended ? 1 : 0, l.strengths, l.weaknesses,
+      l.vue, l.text, l.firstSeen, l.lastChecked, l.open ? 1 : 0, l.closedAt ?? null, l.manual ? 1 : 0,
+    );
+}
+
+export const loadListings = (): Listing[] => (db().prepare('SELECT * FROM listings ORDER BY rowid').all() as Row[]).map(toListing);
+/** Insert or update every listing given. Listings not in the list are left alone; see deleteListing. */
+export const saveListings = (list: Listing[]): void => transaction(db(), () => list.forEach(upsertListing));
+export const saveListing = (l: Listing): void => upsertListing(l);
+
+export function deleteListing(id: string): void {
+  transaction(db(), () => {
+    db().prepare('DELETE FROM state WHERE listing_id = ?').run(id);
+    db().prepare('DELETE FROM listings WHERE id = ?').run(id);
+  });
+}
+
+// ---------- companies ----------
+
+const toCompany = (r: Row): Company => ({
+  id: r.id as string,
+  name: r.name as string,
+  size: r.size as Company['size'],
+  ...(r.salary ? { salary: json(r.salary, undefined) } : {}),
+  emails: json(r.emails, []),
+});
+
+function upsertCompany(c: Company): void {
+  db()
+    .prepare(
+      `INSERT INTO companies (id, name, size, salary, emails) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, size = excluded.size, salary = excluded.salary, emails = excluded.emails`,
+    )
+    .run(c.id, c.name, c.size, c.salary ? JSON.stringify(c.salary) : null, JSON.stringify(c.emails ?? []));
+}
+
+export const loadCompanies = (): Company[] => (db().prepare('SELECT * FROM companies ORDER BY rowid').all() as Row[]).map(toCompany);
+export const saveCompanies = (list: Company[]): void => transaction(db(), () => list.forEach(upsertCompany));
+export const deleteCompany = (id: string): void => void db().prepare('DELETE FROM companies WHERE id = ?').run(id);
+
+// ---------- state + history ----------
+
+const toEvent = (r: Row): TrackEvent => ({
+  id: r.id as string,
+  kind: r.kind as TrackEvent['kind'],
+  at: r.at as string,
+  ...(r.time ? { time: r.time as string } : {}),
+  ...(r.status ? { status: r.status as TrackEvent['status'] } : {}),
+  text: r.text as string,
+});
+
+const toState = (r: Row, events: TrackEvent[]): ListingState => ({
+  status: r.status as ListingState['status'],
+  note: r.note as string,
+  contactedAt: r.contacted_at as string,
+  nextAt: r.next_at as string,
+  nextNote: r.next_note as string,
+  followUps: Number(r.follow_ups),
+  events,
+  updatedAt: r.updated_at as string,
+});
+
 export function loadState(): Record<string, ListingState> {
-  const raw = read<Record<string, Partial<ListingState>>>('state.json', {});
-  return Object.fromEntries(Object.entries(raw).map(([id, st]) => [id, normalizeState(st)]));
+  const events = new Map<string, TrackEvent[]>();
+  for (const r of db().prepare('SELECT * FROM events ORDER BY seq').all() as Row[]) {
+    const id = r.listing_id as string;
+    events.set(id, [...(events.get(id) ?? []), toEvent(r)]);
+  }
+  const out: Record<string, ListingState> = {};
+  for (const r of db().prepare('SELECT * FROM state').all() as Row[]) out[r.listing_id as string] = toState(r, events.get(r.listing_id as string) ?? []);
+  return out;
 }
-export const saveState = (v: Record<string, ListingState>) => write('state.json', v);
-export const loadRuns = () => read<RefreshRun[]>('runs.json', []);
-export const saveRuns = (v: RefreshRun[]) => write('runs.json', v);
-export const loadSettings = (): Settings => ({ ...DEFAULT_SETTINGS, ...read<Partial<Settings>>('settings.json', {}) });
-export const saveSettings = (v: Settings) => write('settings.json', v);
+
+export function getState(id: string): ListingState | undefined {
+  const r = db().prepare('SELECT * FROM state WHERE listing_id = ?').get(id) as Row | undefined;
+  if (!r) return undefined;
+  return toState(r, (db().prepare('SELECT * FROM events WHERE listing_id = ? ORDER BY seq').all(id) as Row[]).map(toEvent));
+}
+
+/** Store one application's state, replacing its history with `st.events`. */
+export function putState(id: string, st: ListingState): void {
+  transaction(db(), () => writeState(id, st));
+}
+
+function writeState(id: string, st: ListingState): void {
+  db()
+    .prepare(
+      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(listing_id) DO UPDATE SET status = excluded.status, note = excluded.note, contacted_at = excluded.contacted_at,
+         next_at = excluded.next_at, next_note = excluded.next_note, follow_ups = excluded.follow_ups, updated_at = excluded.updated_at`,
+    )
+    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.updatedAt);
+  // Events are append-mostly; rewriting this one application's few rows keeps the order exact.
+  db().prepare('DELETE FROM events WHERE listing_id = ?').run(id);
+  const insert = db().prepare('INSERT INTO events (id, listing_id, kind, at, time, status, text) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  for (const e of st.events) insert.run(e.id, id, e.kind, e.at, e.time ?? null, e.status ?? null, e.text);
+}
+
+// ---------- refresh runs ----------
+
+const toRun = (r: Row): RefreshRun => ({
+  at: r.at as string,
+  added: json(r.added, []),
+  closed: json(r.closed, []),
+  reopened: json(r.reopened, []),
+  changed: json(r.changed, []),
+  errors: json(r.errors, []),
+});
+
+/** Newest first, like the old runs.json. */
+export const loadRuns = (limit = 30): RefreshRun[] =>
+  (db().prepare('SELECT * FROM runs ORDER BY id DESC LIMIT ?').all(limit) as Row[]).map(toRun);
+
+export function addRun(run: RefreshRun): void {
+  db()
+    .prepare('INSERT INTO runs (at, added, closed, reopened, changed, errors) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(run.at, JSON.stringify(run.added), JSON.stringify(run.closed), JSON.stringify(run.reopened), JSON.stringify(run.changed), JSON.stringify(run.errors));
+}
+
+// ---------- settings ----------
+
+export function loadSettings(): Settings {
+  const stored = Object.fromEntries((db().prepare('SELECT key, value FROM settings').all() as Row[]).map((r) => [r.key, json(r.value, null)]));
+  return { ...DEFAULT_SETTINGS, ...stored };
+}
+
+export function saveSettings(s: Settings): void {
+  const put = db().prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+  transaction(db(), () => {
+    for (const [k, v] of Object.entries(s)) put.run(k, JSON.stringify(v));
+  });
+}
 
 export function loadDb(): Db {
-  return {
-    listings: loadListings(),
-    companies: loadCompanies(),
-    state: loadState(),
-    runs: loadRuns(),
-    settings: loadSettings(),
-  };
+  return { listings: loadListings(), companies: loadCompanies(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
+}
+
+// ---------- one-time import of the old JSON files ----------
+
+/** Fill an empty database from data/*.json, then move those files to data/legacy-json/. */
+export function importLegacy(target: DatabaseSync, files: NonNullable<ReturnType<typeof readLegacy>>): void {
+  const prev = conn;
+  conn = target;
+  try {
+    transaction(target, () => {
+      for (const c of (files['companies.json'] as Company[] | undefined) ?? []) upsertCompany(c);
+      for (const l of (files['listings.json'] as Listing[] | undefined) ?? []) upsertListing(l);
+      for (const [id, raw] of Object.entries((files['state.json'] as Record<string, Partial<ListingState>> | undefined) ?? {})) {
+        writeState(id, normalizeState(raw));
+      }
+      // runs.json is newest first; insert oldest first so ids grow with time.
+      for (const r of [...((files['runs.json'] as RefreshRun[] | undefined) ?? [])].reverse()) addRun(r);
+      const settings = files['settings.json'] as Partial<Settings> | undefined;
+      if (settings) {
+        const put = target.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+        for (const [k, v] of Object.entries(settings)) put.run(k, JSON.stringify(v));
+      }
+    });
+  } finally {
+    conn = prev;
+  }
+}
+
+function importLegacyOnce(target: DatabaseSync): void {
+  const empty = (target.prepare('SELECT (SELECT count(*) FROM listings) + (SELECT count(*) FROM state) AS n').get() as { n: number }).n === 0;
+  if (!empty) return;
+  const files = readLegacy();
+  if (!files) return;
+  importLegacy(target, files);
+  retireLegacy();
+  console.log('Imported data/*.json into SQLite; originals moved to data/legacy-json/.');
 }
 
 export function slug(text: string): string {

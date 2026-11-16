@@ -22,9 +22,10 @@ Other commands:
 
 ## Where things live
 
-- `data/` – the database, plain JSON. `listings.json` (postings and their text), `companies.json`
-  (salary estimates, e-mail addresses), `state.json` (your statuses, notes, history, next steps),
-  `runs.json` (what each refresh changed), `settings.json` (intro e-mail, search keywords).
+- `data/jobhunt.db` – the SQLite database (Node's built-in `node:sqlite`, no native module). Schema and
+  migrations in `server/db.ts` (versioned with `PRAGMA user_version`), queries in `server/store.ts`.
+  Tables: `listings`, `companies`, `state` + `events` (your statuses and history), `runs`, `settings`.
+  `data/` is not in git: it is personal and rolling back code should not roll back your notes.
 - `server/` – local API (Hono) and the refresh job. `server/sources/` has one scraper per job board.
 - `src/` – Vue 3 app. `filters.ts` and `search.ts` hold the filtering and full-text search logic.
   UI is Tailwind v4 + [shadcn-vue](https://www.shadcn-vue.com) (Reka UI): generated components live in
@@ -70,14 +71,13 @@ tries to fill in title, company and text. Refresh never re-checks or closes thes
 
 ## Backups and the daily refresh
 
-While the server runs, it commits `data/` once a day (when something changed) to a separate git history in
-`.data-history/`. It is local, never pushed, and kept apart from the project's own repository. To look or
-restore:
+While the server runs, it writes a copy of the database to `data/backups/jobhunt-YYYY-MM-DD.db` once a
+day (`VACUUM INTO`, safe while the app is writing) and keeps the last 30. Settings → Data has "Zálohovat
+teď" and exports: CSV for a spreadsheet, JSON with everything. To restore, stop the server and copy a
+backup over `data/jobhunt.db` (delete `jobhunt.db-wal` and `jobhunt.db-shm` next to it).
 
-```sh
-git --git-dir=.data-history --work-tree=data log --stat
-git --git-dir=.data-history --work-tree=data checkout <commit> -- state.json
-```
+The first start after the switch to SQLite imported the old `data/*.json` files and moved them to
+`data/legacy-json/`.
 
 With **Obnovovat inzeráty jednou denně** on (Settings), the server also starts a refresh by itself
 between 7:00 and 23:00 when the last one is over 20 hours old.
