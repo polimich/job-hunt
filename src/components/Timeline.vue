@@ -79,7 +79,7 @@ async function remove(e: TrackEvent) {
   <section class="flex flex-col gap-3">
     <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Historie</h3>
 
-    <form class="flex flex-col gap-2 rounded-2xl border bg-card shadow-soft p-3" @submit.prevent="add">
+    <form class="flex flex-col gap-2 rounded-2xl border bg-card p-3" @submit.prevent="add">
       <div class="flex flex-wrap items-center gap-2">
         <ToggleGroup v-model="kind" type="single" variant="outline" size="sm" aria-label="Druh záznamu" @update:model-value="(v) => v || (kind = 'message')">
           <ToggleGroupItem v-for="k in KINDS" :key="k.id" :value="k.id" :aria-label="k.label">

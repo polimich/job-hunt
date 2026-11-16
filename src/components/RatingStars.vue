@@ -36,7 +36,7 @@ const LABELS = ['', 'Spíš ne', 'Možná', 'Zajímavé', 'Moc chci', 'Vysněná
       :title="readonly ? undefined : LABELS[n]"
       :class="cn(
         'rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-        !readonly && 'cursor-pointer transition-transform duration-300 ease-(--ease-spring) hover:scale-125 active:scale-90',
+        !readonly && 'transition-transform duration-150 hover:scale-110',
       )"
       @mouseenter="!readonly && (hover = n)"
       @click="pick(n)"

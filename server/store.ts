@@ -12,15 +12,22 @@ export { DATA_DIR };
 const DEFAULT_SETTINGS: Settings = {
   introCs: { subject: 'Zájem o pozici {title}', body: '' },
   introEn: { subject: 'Application for {title}', body: '' },
-  keywords: ['react', 'frontend developer', 'full stack', 'typescript'],
-  vueKeywords: ['vue', 'nuxt'],
-  excludeTitle: '',
-  minSalary: 100000,
+  // A new install starts empty; the first visit to Settings asks for keywords and a town.
+  keywords: [],
+  location: '',
+  radiusKm: 0,
+  remote: true,
+  postedWithinDays: 14,
+  titleMustMatch: [],
+  excludeWords: [],
+  mpsvCategories: [],
+  level: 'any',
+  minSalary: 0,
   followUpDays: 7,
   autoRefresh: true,
   weeklyGoal: 5,
   sources: {},
-  skills: ['React', 'TypeScript', 'JavaScript', 'Vue', 'Next.js', 'Node', 'HTML', 'CSS', 'Tailwind', 'REST', 'Git'],
+  skills: [],
   templates: {
     followUp: {
       cs: {

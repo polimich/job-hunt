@@ -10,6 +10,8 @@ export interface Candidate {
   location: string;
   salaryPosted?: string;
   mode?: string;
+  /** Found by a search limited to the chosen town (and its radius), so it counts as local. */
+  local?: boolean;
   /** Full or partial posting text when the search already returns it (APIs, open data). */
   text?: string;
 }

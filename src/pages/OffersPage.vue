@@ -35,14 +35,14 @@ const thousands = (n: number) => (n ? `${n.toLocaleString('cs-CZ')} Kč` : '–'
       </EmptyHeader>
     </Empty>
 
-    <div v-else class="animate-rise overflow-x-auto rounded-2xl border bg-card shadow-soft scrollbar-thin">
+    <div v-else class="overflow-x-auto rounded-2xl border bg-card shadow-soft scrollbar-thin">
       <table class="w-full min-w-[640px] text-sm">
         <thead>
           <tr class="border-b">
             <th class="w-40 p-4" />
-            <th v-for="(c, i) in cols" :key="c.l.id" class="p-4 text-left align-top" :style="{ '--i': i }">
+            <th v-for="c in cols" :key="c.l.id" class="p-4 text-left align-top">
               <RouterLink :to="`/pozice/${c.l.id}`" class="group flex items-start gap-3">
-                <CompanyAvatar :name="c.l.company" class="transition-transform duration-300 ease-(--ease-spring) group-hover:scale-110 group-hover:-rotate-6" />
+                <CompanyAvatar :name="c.l.company" />
                 <span class="min-w-0">
                   <span class="block font-display text-base font-bold group-hover:underline underline-offset-4">{{ c.l.company }}</span>
                   <span class="block text-xs font-normal text-muted-foreground">{{ c.l.title }}</span>

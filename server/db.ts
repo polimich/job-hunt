@@ -11,7 +11,43 @@ export const DATA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'dat
 /** JOBHUNT_DB=':memory:' gives tests a throwaway database. */
 export const DB_FILE = process.env.JOBHUNT_DB ?? join(DATA_DIR, 'jobhunt.db');
 
-const MIGRATIONS: string[] = [
+/**
+ * v0.8 made the search configurable. Places become "local" (the search town) / remote / elsewhere.
+ * A database that already has settings or listings keeps behaving as before: its old built-in
+ * defaults (Brno, the Vue keywords, the title filters, the skills) are written out as settings,
+ * because the new built-in defaults are empty.
+ */
+function searchProfile(db: DatabaseSync): void {
+  db.exec(`UPDATE listings SET place = CASE place WHEN 'brno' THEN 'local' WHEN 'remote' THEN 'remote' ELSE 'jinde' END`);
+  const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+  if (!count('SELECT COUNT(*) AS n FROM listings') && !count('SELECT COUNT(*) AS n FROM settings')) return;
+  const stored = new Map((db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]).map((r) => [r.key, JSON.parse(r.value) as unknown]));
+  const list = (key: string, fallback: string[]) => (Array.isArray(stored.get(key)) ? (stored.get(key) as string[]) : fallback);
+  const keywords = [...new Set([...list('keywords', ['react', 'frontend developer', 'full stack', 'typescript']), ...list('vueKeywords', ['vue', 'nuxt'])])];
+  const oldExclude = typeof stored.get('excludeTitle') === 'string' ? (stored.get('excludeTitle') as string) : '';
+  const put = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+  const set = (key: string, value: unknown) => put.run(key, JSON.stringify(value));
+  const keep = (key: string, value: unknown) => !stored.has(key) && set(key, value);
+  set('keywords', keywords);
+  set('location', 'Brno');
+  set('radiusKm', 0);
+  set('remote', true);
+  set('postedWithinDays', 10);
+  set('titleMustMatch', ['react', 'vue', 'nuxt', 'frontend', 'full stack', 'typescript', 'javascript', 'web developer', 'web engineer', 'software engineer', 'software developer', 'vývojář', 'vývojářka', 'programátor', 'programátorka', 'developer']);
+  set(
+    'excludeWords',
+    oldExclude
+      ? oldExclude.split('|').map((w) => w.replace(/\\b|[()?:^$\\]/g, '').trim()).filter(Boolean)
+      : ['java', 'php', 'android', 'ios', 'devops', 'data engineer', 'data scientist', 'data analyst', 'qa', 'tester', 'test engineer', 'sales', 'marketing', 'c++', 'embedded', 'ruby', 'golang', 'designer', 'product manager', 'product owner', 'support', 'kotlin', 'swift', 'machine learning', 'analyst', 'sap', 'salesforce', 'security', 'sre', 'recruiter', 'manager', 'intern', 'scientist', 'firmware', 'hardware', 'consultant', 'architect', 'rust', 'backend', 'servicenow', 'sharepoint', 'mainframe', 'director', 'lead', 'principal', 'staff', 'junior', 'power platform'],
+  );
+  set('mpsvCategories', ['251']);
+  set('level', 'medior');
+  keep('minSalary', 100000);
+  keep('skills', ['React', 'TypeScript', 'JavaScript', 'Vue', 'Next.js', 'Node', 'HTML', 'CSS', 'Tailwind', 'REST', 'Git']);
+  db.prepare("DELETE FROM settings WHERE key IN ('vueKeywords', 'excludeTitle')").run();
+}
+
+const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   // 1: everything the JSON files held.
   `
   CREATE TABLE companies (
@@ -134,6 +170,8 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE state ADD COLUMN offer TEXT;
   `,
+  // 6: a general search profile instead of one person's Brno/Vue setup.
+  searchProfile,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {
@@ -148,7 +186,9 @@ function migrate(db: DatabaseSync): void {
   const version = Number((db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
   for (let v = version; v < MIGRATIONS.length; v++) {
     transaction(db, () => {
-      db.exec(MIGRATIONS[v]!);
+      const step = MIGRATIONS[v]!;
+      if (typeof step === 'string') db.exec(step);
+      else step(db);
       db.exec(`PRAGMA user_version = ${v + 1}`);
     });
   }

@@ -52,12 +52,12 @@ const SOURCE_LABEL: Record<string, string> = SOURCE_LABELS;
 
     <template v-else>
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile v-for="(t, i) in tiles" :key="t.label" :label="t.label" :value="t.value" :icon="t.icon" :color="t.color" :hint="t.hint" :index="i + 1" />
+        <StatTile v-for="t in tiles" :key="t.label" :label="t.label" :value="t.value" :icon="t.icon" :color="t.color" :hint="t.hint" />
       </div>
 
       <div class="grid gap-4 lg:grid-cols-2">
         <!-- Funnel -->
-        <section class="animate-rise rounded-2xl border bg-card p-5 shadow-soft" style="--i: 5">
+        <section class="rounded-2xl border bg-card p-5 shadow-soft">
           <h2 class="text-lg font-bold">Kam se pozice dostaly</h2>
           <p class="mb-4 text-xs text-muted-foreground">Nejdál dosažený krok, včetně těch, které už skončily.</p>
           <ul class="flex flex-col gap-2.5">
@@ -65,8 +65,8 @@ const SOURCE_LABEL: Record<string, string> = SOURCE_LABELS;
               <span class="text-muted-foreground">{{ f.label }}</span>
               <span class="h-6 overflow-hidden rounded-full bg-muted/70">
                 <span
-                  :class="cn('block h-full rounded-full transition-[width] duration-1000 ease-(--ease-out-soft)', statusMeta(FUNNEL_STATUS[i]!).dot)"
-                  :style="{ width: grown ? `${Math.max((f.n / funnelMax) * 100, f.n ? 6 : 0)}%` : '0%', transitionDelay: `${i * 90}ms` }"
+                  :class="cn('block h-full rounded-full transition-[width] duration-300', statusMeta(FUNNEL_STATUS[i]!).dot)"
+                  :style="{ width: grown ? `${Math.max((f.n / funnelMax) * 100, f.n ? 6 : 0)}%` : '0%' }"
                 />
               </span>
               <span class="w-16 text-right tabular-nums">
@@ -78,15 +78,15 @@ const SOURCE_LABEL: Record<string, string> = SOURCE_LABELS;
         </section>
 
         <!-- Weekly -->
-        <section class="animate-rise rounded-2xl border bg-card p-5 shadow-soft" style="--i: 6">
+        <section class="rounded-2xl border bg-card p-5 shadow-soft">
           <h2 class="text-lg font-bold">Odesláno po týdnech</h2>
           <p class="mb-4 text-xs text-muted-foreground">Posledních 8 týdnů, podle data odeslání.</p>
           <div class="flex h-40 items-end gap-2 border-b">
-            <div v-for="(w, wi) in stats.weeks" :key="w.start" class="group relative flex h-full flex-1 flex-col items-center justify-end" :title="`Týden od ${weekLabel(w.start)}: ${w.n}`">
+            <div v-for="w in stats.weeks" :key="w.start" class="group relative flex h-full flex-1 flex-col items-center justify-end" :title="`Týden od ${weekLabel(w.start)}: ${w.n}`">
               <span v-if="w.n" class="mb-1 text-xs tabular-nums text-muted-foreground">{{ w.n }}</span>
               <span
-                class="w-full max-w-9 rounded-t-xl bg-primary transition-[height,filter] duration-1000 ease-(--ease-spring) group-hover:brightness-110"
-                :style="{ height: grown ? `${(w.n / weekMax) * 80}%` : '0%', transitionDelay: `${wi * 60}ms` }"
+                class="w-full max-w-9 rounded-t-xl bg-primary transition-[height,filter] duration-300 group-hover:brightness-110"
+                :style="{ height: grown ? `${(w.n / weekMax) * 80}%` : '0%' }"
               />
             </div>
           </div>
@@ -97,7 +97,7 @@ const SOURCE_LABEL: Record<string, string> = SOURCE_LABELS;
       </div>
 
       <!-- By source -->
-      <section v-if="stats.bySource.length" class="animate-rise rounded-2xl border bg-card p-5 shadow-soft" style="--i: 7">
+      <section v-if="stats.bySource.length" class="rounded-2xl border bg-card p-5 shadow-soft">
         <h2 class="text-lg font-bold">Podle zdroje</h2>
         <p class="mb-3 text-xs text-muted-foreground">Odkud přišly pozice, na které jsi odeslal(a) přihlášku, a kolik z nich odpovědělo.</p>
         <table class="w-full text-sm">
@@ -115,7 +115,7 @@ const SOURCE_LABEL: Record<string, string> = SOURCE_LABELS;
         </table>
       </section>
       <!-- By document -->
-      <section v-if="stats.byDoc.length" class="animate-rise rounded-2xl border bg-card p-5 shadow-soft" style="--i: 8">
+      <section v-if="stats.byDoc.length" class="rounded-2xl border bg-card p-5 shadow-soft">
         <h2 class="text-lg font-bold">Podle verze CV</h2>
         <p class="mb-3 text-xs text-muted-foreground">Které dokumenty jsi posílal(a) a kolik firem se pak ozvalo.</p>
         <table class="w-full text-sm">

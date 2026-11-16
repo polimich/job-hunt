@@ -1,5 +1,5 @@
 /** Listings added by hand: read what we can from a pasted URL, then build the listing. */
-import type { Company, Listing, ManualInput, Preview, Source } from '../shared/types.ts';
+import type { Company, Listing, ManualInput, Preview, Settings, Source } from '../shared/types.ts';
 import { decodeEntities, fetchText } from './http.ts';
 import { toListing } from './refresh.ts';
 import { detailFor, SOURCES } from './sources/index.ts';
@@ -88,7 +88,7 @@ export async function preview(url: string): Promise<Preview> {
   };
 }
 
-export function manualListing(input: ManualInput, companies: Company[], today: string): Listing {
+export function manualListing(input: ManualInput, companies: Company[], today: string, settings: Settings): Listing {
   const url = input.url?.trim() ?? '';
   const { source, sourceId } = url ? sourceOf(url) : { source: 'other' as const, sourceId: `${slug(input.company)}-${slug(input.title)}` };
   const listing = toListing(
@@ -96,6 +96,7 @@ export function manualListing(input: ManualInput, companies: Company[], today: s
     { open: true, text: input.text?.trim() ?? '' },
     companies,
     today,
+    settings,
   );
   if (input.place) listing.place = input.place;
   listing.manual = true;

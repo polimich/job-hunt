@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, RadarIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
-import { SOURCE_LABELS, type Settings, type Source, type TemplateKind } from '../../shared/types';
+import { AlarmClockIcon, RadarIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, ChevronDownIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
+import { CITIES, cityCode, ISCO_GROUPS, splitList } from '../../shared/search';
+import { SOURCE_LABELS, type Level, type Settings, type Source, type TemplateKind } from '../../shared/types';
+import FilterChip from '../components/FilterChip.vue';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PageHeader from '../components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -86,15 +89,36 @@ async function backupNow() {
 
 const keywords = ref(form.keywords.join(', '));
 const skills = ref((form.skills ?? []).join(', '));
-const vueKeywords = ref(form.vueKeywords.join(', '));
+const titleMustMatch = ref(form.titleMustMatch.join(', '));
+const excludeWords = ref(form.excludeWords.join(', '));
+const CITY_NAMES = Object.keys(CITIES);
+const RADII = [0, 10, 20, 30, 50];
+const AGES = [...new Set([3, 7, 10, 14, 30, 0, form.postedWithinDays])].sort((a, b) => (a || 999) - (b || 999));
+const LEVELS: { id: Level; label: string }[] = [
+  { id: 'any', label: 'nerozhoduje' },
+  { id: 'junior', label: 'junior' },
+  { id: 'medior', label: 'medior' },
+  { id: 'senior', label: 'senior' },
+  { id: 'lead', label: 'vedoucí / lead' },
+];
+function toggleGroup(id: string) {
+  const i = form.mpsvCategories.indexOf(id);
+  if (i >= 0) form.mpsvCategories.splice(i, 1);
+  else form.mpsvCategories.push(id);
+}
 const saving = ref(false);
 
-const split = (text: string) => text.split(',').map((t) => t.trim()).filter(Boolean);
 
 async function save() {
   saving.value = true;
   try {
-    await saveSettings({ ...form, keywords: split(keywords.value), vueKeywords: split(vueKeywords.value), skills: split(skills.value) });
+    await saveSettings({
+      ...form,
+      keywords: splitList(keywords.value),
+      titleMustMatch: splitList(titleMustMatch.value),
+      excludeWords: splitList(excludeWords.value),
+      skills: splitList(skills.value),
+    });
     toast.success('Nastavení uloženo');
   } catch (e) {
     toast.error('Uložení selhalo', { description: e instanceof Error ? e.message : String(e) });
@@ -106,7 +130,112 @@ async function save() {
 
 <template>
   <form class="mx-auto flex max-w-3xl flex-col gap-6 px-6 pt-8 pb-16" @submit.prevent="save">
-    <PageHeader title="Nastavení" description="Úvodní e-mail, klíčová slova pro hledání a tvoje mzdové minimum." />
+    <PageHeader title="Nastavení" description="Co a kde hledat, tvůj profil, e-maily a připomínky." />
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2"><SearchIcon class="size-4 text-muted-foreground" /> Hledání</CardTitle>
+        <CardDescription>Co a kde se při obnovení hledá na všech zapnutých portálech.</CardDescription>
+      </CardHeader>
+      <CardContent class="flex flex-col gap-5">
+        <div class="flex flex-col gap-2">
+          <Label for="keywords">Klíčová slova</Label>
+          <Input id="keywords" v-model="keywords" placeholder="např. frontend developer, účetní, projektový manažer" />
+          <p class="text-xs text-muted-foreground">Oddělená čárkou. Každé slovo je jeden dotaz na každém portálu, takže víc než šest slov obnovení zpomalí (hlavně LinkedIn).</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-[1fr_10rem]">
+          <div class="flex flex-col gap-2">
+            <Label for="location">Město</Label>
+            <Input id="location" v-model="form.location" list="cities" placeholder="Prázdné = celá ČR" />
+            <datalist id="cities"><option v-for="c in CITY_NAMES" :key="c" :value="c" /></datalist>
+            <p v-if="form.location.trim() && !cityCode(form.location)" class="text-xs text-muted-foreground">
+              Úřad práce zná jen větší města ze seznamu; ostatní portály hledají i tady.
+            </p>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label for="radius">Okruh</Label>
+            <Select :model-value="String(form.radiusKm)" :disabled="!form.location.trim()" @update:model-value="(v) => (form.radiusKm = Number(v))">
+              <SelectTrigger id="radius" class="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="r in RADII" :key="r" :value="String(r)">{{ r ? `+ ${r} km` : "jen město" }}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <Label class="flex items-start gap-3 font-normal">
+            <Checkbox v-model="form.remote" class="mt-0.5" />
+            <span class="flex flex-col gap-0.5">
+              <span class="font-medium">Hledat i práci na dálku</span>
+              <span class="text-xs text-muted-foreground">Remote pozice odkudkoli z ČR.</span>
+            </span>
+          </Label>
+          <div class="flex flex-col gap-2">
+            <Label for="posted">Stáří inzerátů</Label>
+            <Select :model-value="String(form.postedWithinDays)" @update:model-value="(v) => (form.postedWithinDays = Number(v))">
+              <SelectTrigger id="posted" class="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="d in AGES" :key="d" :value="String(d)">{{ d ? `posledních ${d} dní` : "jakékoli" }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">Umí jen LinkedIn; ostatní portály ukazují jen aktuální nabídky.</p>
+          </div>
+        </div>
+        <details class="group rounded-xl border px-4 py-3" :open="!!form.titleMustMatch.length || !!form.excludeWords.length">
+          <summary class="flex items-center justify-between text-sm font-medium select-none">
+            Filtrovat názvy pozic
+            <ChevronDownIcon class="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+          </summary>
+          <div class="flex flex-col gap-4 pt-4">
+            <div class="flex flex-col gap-2">
+              <Label for="must">Název musí obsahovat aspoň jedno z</Label>
+              <Textarea id="must" v-model="titleMustMatch" rows="2" placeholder="Prázdné = věřit vyhledávání portálu" />
+            </div>
+            <div class="flex flex-col gap-2">
+              <Label for="exclude">Vynechat pozice, jejichž název obsahuje</Label>
+              <Textarea id="exclude" v-model="excludeWords" rows="3" placeholder="např. junior, java, sales" />
+            </div>
+            <p class="text-xs text-muted-foreground">Oddělené čárkou. Porovnávají se celá slova bez ohledu na diakritiku: „java“ nevyřadí „JavaScript“.</p>
+          </div>
+        </details>
+        <div class="flex flex-col gap-2">
+          <span class="text-sm font-medium">Obory z Úřadu práce</span>
+          <p class="text-xs text-muted-foreground">Inzeráty Úřadu práce mají málokdy technologie v textu. Zvolené obory se berou celé, ostatní jen když zmíní klíčové slovo.</p>
+          <div class="flex flex-wrap gap-1.5">
+            <FilterChip v-for="g in ISCO_GROUPS" :key="g.id" :on="form.mpsvCategories.includes(g.id)" @toggle="toggleGroup(g.id)">{{ g.label }}</FilterChip>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2"><RadarIcon class="size-4 text-muted-foreground" /> Zdroje inzerátů</CardTitle>
+        <CardDescription>Kde se při obnovení hledají nové pozice. Přednost mají oficiální data a API, scrapování jen tam, kde jiná cesta není.</CardDescription>
+      </CardHeader>
+      <CardContent class="flex flex-col divide-y">
+        <label v-for="src in sources" :key="src.id" class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+          <Checkbox
+            :model-value="!!src.needsKey && !src.needsKey.has ? false : ((form.sources ??= {})[src.id] ?? src.on)"
+            :disabled="!!src.needsKey && !src.needsKey.has"
+            class="mt-0.5"
+            @update:model-value="(v) => ((form.sources ??= {})[src.id] = v === true)"
+          />
+          <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span class="flex flex-wrap items-center gap-2 text-sm font-semibold">
+              {{ SOURCE_LABELS[src.id] }}
+              <span v-if="src.needsKey && src.needsKey.has" class="rounded-full bg-(--st-interview-bg) px-2 text-[11px] font-semibold text-(--st-interview-fg)">klíč nastaven</span>
+              <span v-else-if="src.needsKey" class="rounded-full bg-muted px-2 text-[11px] font-semibold text-muted-foreground">potřebuje klíč</span>
+            </span>
+            <span class="text-xs text-muted-foreground">{{ src.about }}</span>
+            <span v-if="src.needsKey && !src.needsKey.has" class="text-xs text-muted-foreground">
+              Zdarma na <a :href="src.needsKey.signup" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline underline-offset-4">{{ src.needsKey.signup.replace(/^https?:\/\/(www\.)?/, "").split("/")[0] }}</a>,
+              pak <code class="rounded bg-muted px-1 font-mono">{{ src.needsKey.env }}=…</code> do souboru <code class="rounded bg-muted px-1 font-mono">.env</code> a restart serveru.
+            </span>
+          </span>
+        </label>
+      </CardContent>
+    </Card>
 
     <Card>
       <CardHeader>
@@ -160,68 +289,28 @@ async function save() {
       </CardContent>
     </Card>
 
-    <Card>
-      <CardHeader>
-        <CardTitle class="flex items-center gap-2"><RadarIcon class="size-4 text-muted-foreground" /> Zdroje inzerátů</CardTitle>
-        <CardDescription>Kde se při obnovení hledají nové pozice. Přednost mají oficiální data a API, scrapování jen tam, kde jiná cesta není.</CardDescription>
-      </CardHeader>
-      <CardContent class="flex flex-col divide-y">
-        <label v-for="src in sources" :key="src.id" class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-          <Checkbox
-            :model-value="!!src.needsKey && !src.needsKey.has ? false : ((form.sources ??= {})[src.id] ?? src.on)"
-            :disabled="!!src.needsKey && !src.needsKey.has"
-            class="mt-0.5"
-            @update:model-value="(v) => ((form.sources ??= {})[src.id] = v === true)"
-          />
-          <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span class="flex flex-wrap items-center gap-2 text-sm font-semibold">
-              {{ SOURCE_LABELS[src.id] }}
-              <span v-if="src.needsKey && src.needsKey.has" class="rounded-full bg-(--st-interview-bg) px-2 text-[11px] font-semibold text-(--st-interview-fg)">klíč nastaven</span>
-              <span v-else-if="src.needsKey" class="rounded-full bg-muted px-2 text-[11px] font-semibold text-muted-foreground">potřebuje klíč</span>
-            </span>
-            <span class="text-xs text-muted-foreground">{{ src.about }}</span>
-            <span v-if="src.needsKey && !src.needsKey.has" class="text-xs text-muted-foreground">
-              Zdarma na <a :href="src.needsKey.signup" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline underline-offset-4">{{ src.needsKey.signup.replace(/^https?:\/\/(www\.)?/, "").split("/")[0] }}</a>,
-              pak <code class="rounded bg-muted px-1 font-mono">{{ src.needsKey.env }}=…</code> do souboru <code class="rounded bg-muted px-1 font-mono">.env</code> a restart serveru.
-            </span>
-          </span>
-        </label>
-      </CardContent>
-    </Card>
 
-    <Card>
-      <CardHeader>
-        <CardTitle class="flex items-center gap-2"><SearchIcon class="size-4 text-muted-foreground" /> Hledání nových inzerátů</CardTitle>
-        <CardDescription>Klíčová slova se hledají na jobs.cz, LinkedIn, Careerjet a Jooble (StartupJobs a Úřad práce berou vše a filtrují se podle názvu). Každé slovo přidá dotazy na LinkedIn, které trvají nejdéle; čtyři až šest slov je rozumné maximum.</CardDescription>
-      </CardHeader>
-      <CardContent class="flex flex-col gap-4">
-        <div class="flex flex-col gap-2">
-          <Label for="keywords">Klíčová slova</Label>
-          <Input id="keywords" v-model="keywords" />
-          <p class="text-xs text-muted-foreground">Oddělená čárkou.</p>
-        </div>
-        <div class="flex flex-col gap-2">
-          <Label for="vue-keywords">Klíčová slova pro Vue</Label>
-          <Input id="vue-keywords" v-model="vueKeywords" />
-        </div>
-        <div class="flex flex-col gap-2">
-          <Label for="exclude">Vynechat názvy pozic</Label>
-          <Input id="exclude" v-model="form.excludeTitle" placeholder="např. java|php|devops" class="font-mono text-xs" />
-          <p class="text-xs text-muted-foreground">Regulární výraz. Prázdné = výchozí seznam.</p>
-        </div>
-      </CardContent>
-    </Card>
 
     <Card>
       <CardHeader>
         <CardTitle class="flex items-center gap-2"><WalletIcon class="size-4 text-muted-foreground" /> Profil a mzda</CardTitle>
-        <CardDescription>Tvoje dovednosti a mzdové minimum. Firmy, jejichž horní odhad je pod minimem, se zvýrazní červeně.</CardDescription>
+        <CardDescription>Tvoje dovednosti, úroveň a mzdové minimum. Firmy, jejichž horní odhad je pod minimem, se zvýrazní červeně.</CardDescription>
       </CardHeader>
       <CardContent class="flex flex-col gap-5">
         <div class="flex flex-col gap-2">
           <Label for="skills">Moje dovednosti</Label>
-          <Input id="skills" v-model="skills" placeholder="React, TypeScript, Vue…" />
-          <p class="text-xs text-muted-foreground">Oddělené čárkou. V detailu pozice uvidíš, kolik procent stacku umíš a co chybí.</p>
+          <Input id="skills" v-model="skills" placeholder="např. React, TypeScript, Figma, účetnictví" />
+          <p class="text-xs text-muted-foreground">Oddělené čárkou. V detailu pozice uvidíš, kolik procent stacku umíš a co chybí; podle nich se odhaduje i shoda nových inzerátů.</p>
+        </div>
+        <div class="flex max-w-xs flex-col gap-2">
+          <Label for="level">Úroveň, o kterou mi jde</Label>
+          <Select v-model="form.level">
+            <SelectTrigger id="level" class="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="l in LEVELS" :key="l.id" :value="l.id">{{ l.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-xs text-muted-foreground">Pozice o úroveň výš nebo níž dostanou nižší odhad shody.</p>
         </div>
         <div class="flex max-w-xs flex-col gap-2">
           <Label for="min-salary">Moje minimum, hrubého měsíčně</Label>
@@ -281,7 +370,7 @@ async function save() {
               <option value="cv">CV</option><option value="cover">Motivační dopis</option><option value="other">Jiné</option>
             </select>
           </div>
-          <label class="relative inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 text-sm text-muted-foreground hover:border-foreground/30 hover:text-foreground">
+          <label class="relative inline-flex h-8 items-center gap-1.5 rounded-lg border border-dashed px-3 text-sm text-muted-foreground hover:border-foreground/30 hover:text-foreground">
             <UploadIcon class="size-4" /> {{ docFile ? docFile.name : 'Vybrat soubor' }}
             <input type="file" accept=".pdf,.doc,.docx,.odt,.md,.txt" class="sr-only" @change="docFile = ($event.target as HTMLInputElement).files?.[0] ?? null" />
           </label>

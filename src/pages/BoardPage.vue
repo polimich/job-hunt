@@ -102,7 +102,7 @@ async function onDrop(status: Status) {
             <component :is="col.meta.icon" class="size-3.5" />
           </span>
           <h2 class="text-base font-bold">{{ col.meta.label }}</h2>
-          <span :key="col.items.length" class="ml-auto animate-pop rounded-full bg-card/80 px-2 py-0.5 text-xs font-semibold tabular-nums shadow-xs">{{ col.items.length }}</span>
+          <span class="ml-auto rounded-full bg-card/80 px-2 py-0.5 text-xs font-semibold tabular-nums shadow-xs">{{ col.items.length }}</span>
         </header>
         <TransitionGroup name="list" tag="ul" class="relative flex min-h-24 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-2.5 scrollbar-thin">
           <li
@@ -148,7 +148,7 @@ async function onDrop(status: Status) {
             key="empty"
             class="flex flex-1 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-foreground/10 p-4 text-center text-xs text-muted-foreground"
           >
-            <component :is="col.meta.icon" class="size-5 animate-float opacity-50" />
+            <component :is="col.meta.icon" class="size-5 opacity-50" />
             Sem přetáhni kartu
           </li>
         </TransitionGroup>

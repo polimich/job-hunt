@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { htmlToText } from '../server/http';
-import { autoFit, extractTags, placeOf, vueMention } from '../server/score';
+import { autoFit, extractTags } from '../server/score';
+import { placeOf } from '../shared/search';
 import { linkedinId } from '../server/sources/linkedin';
 
 describe('htmlToText', () => {
@@ -15,21 +16,24 @@ describe('scoring', () => {
     expect(extractTags('JavaScript, React and TypeScript')).toEqual(['React', 'TypeScript']);
     expect(extractTags('Java and Spring')).toEqual(['Java']);
   });
-  it('says whether Vue is the main framework or one of several', () => {
-    expect(vueMention('We use Vue.js and Nuxt')).toBe('hlavní framework');
-    expect(vueMention('React or Vue')).toBe('zmíněno vedle jiných frameworků');
-    expect(vueMention('Angular only')).toBe('');
+  it('buckets places relative to the search town', () => {
+    expect(placeOf('Brno, Czechia', '', 'Brno')).toBe('local');
+    expect(placeOf('Czechia', 'remote', 'Brno')).toBe('remote');
+    expect(placeOf('Prague', 'hybrid', 'Brno')).toBe('jinde');
+    expect(placeOf('Praha 5', 'hybrid', 'Praha')).toBe('local');
+    expect(placeOf('Ostrava', '', '')).toBe('local');
   });
-  it('buckets places', () => {
-    expect(placeOf('Brno, Czechia', '')).toBe('brno');
-    expect(placeOf('Czechia', 'remote')).toBe('remote');
-    expect(placeOf('Prague', 'hybrid')).toBe('praha');
+  const me = { skills: ['React', 'TypeScript', 'Next.js'], keywords: ['frontend developer'], level: 'medior' as const };
+  it('rates a role matching my skills and town above a staff role in another stack elsewhere', () => {
+    expect(autoFit('Frontend Developer', 'React, TypeScript, Next.js', 'local', me)).toBeGreaterThanOrEqual(4);
+    expect(autoFit('Staff Java Engineer', 'Java, Spring', 'jinde', me)).toBe(1);
   });
-  it('rates a React role in Brno above a staff Java role elsewhere', () => {
-    const good = autoFit('Frontend Developer', 'React, TypeScript, Next.js', 'brno');
-    const bad = autoFit('Staff Java Engineer', 'Java, Spring', 'jinde');
-    expect(good).toBeGreaterThanOrEqual(4);
-    expect(bad).toBe(1);
+  it('follows the seniority I am after', () => {
+    const junior = { ...me, level: 'junior' as const };
+    expect(autoFit('Junior Frontend Developer', 'React', 'local', junior)).toBeGreaterThan(autoFit('Senior Frontend Developer', 'React', 'local', junior));
+  });
+  it('stays neutral without skills', () => {
+    expect(autoFit('Účetní', 'Pohoda, fakturace', 'local', { skills: [], keywords: ['účetní'], level: 'any' })).toBe(3);
   });
 });
 

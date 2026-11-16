@@ -81,7 +81,7 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
       <aside class="hidden w-64 shrink-0 flex-col border-r bg-sidebar/70 backdrop-blur-xl md:flex">
         <RouterLink to="/" class="group flex items-center gap-3 px-4 pt-5 pb-6">
           <span
-            class="flex size-10 -rotate-6 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-pop transition-transform duration-500 ease-(--ease-spring) group-hover:rotate-6 group-hover:scale-110"
+            class="flex size-10 -rotate-6 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-pop"
           >
             <BriefcaseBusinessIcon class="size-5" />
           </span>
@@ -96,7 +96,7 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
           <span
             v-show="activeIndex >= 0"
             aria-hidden="true"
-            class="absolute inset-x-3 top-0 h-9 rounded-xl bg-card shadow-soft ring-1 ring-foreground/5 transition-transform duration-500 ease-(--ease-spring)"
+            class="absolute inset-x-3 top-0 h-9 rounded-xl bg-card shadow-soft ring-1 ring-foreground/5 transition-transform duration-200 ease-out"
             :style="{ transform: `translateY(${activeIndex * 40}px)` }"
           />
           <RouterLink
@@ -110,15 +110,14 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
           >
             <component
               :is="item.icon"
-              :class="cn('size-4 transition-transform duration-300 ease-(--ease-spring) group-hover:scale-115 group-hover:-rotate-6', item.active && 'text-primary')"
+              :class="cn('size-4', item.active && 'text-primary')"
             />
             <span class="flex-1">{{ item.label }}</span>
             <span
               v-if="item.count !== undefined && loaded"
-              :key="`${item.to}-${item.count}`"
               :class="cn(
                 'text-xs tabular-nums',
-                item.alert ? 'animate-pop rounded-full bg-primary px-1.5 py-px font-semibold text-primary-foreground' : 'text-muted-foreground',
+                item.alert ? 'rounded-full bg-primary px-1.5 py-px font-semibold text-primary-foreground' : 'text-muted-foreground',
               )"
             >{{ item.count }}</span>
           </RouterLink>
@@ -130,7 +129,7 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
           </Button>
         </div>
 
-        <div v-if="loaded" class="mt-7 px-3">
+        <div v-if="loaded && pipeline.some((s) => statusCounts[s])" class="mt-7 px-3">
           <p class="px-3 pb-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Rozjednané</p>
           <button
             v-for="s in pipeline"
@@ -142,11 +141,10 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
             )"
             @click="showOnly(s)"
           >
-            <span :class="cn('size-2.5 rounded-full ring-2 ring-sidebar transition-transform duration-300 ease-(--ease-spring) group-hover:scale-150', statusMeta(s).dot)" />
+            <span :class="cn('size-2.5 rounded-full ring-2 ring-sidebar', statusMeta(s).dot)" />
             <span class="flex-1 text-left">{{ statusMeta(s).label }}</span>
-            <span :key="statusCounts[s]" class="animate-pop text-xs font-medium tabular-nums">{{ statusCounts[s] }}</span>
+            <span class="text-xs font-medium tabular-nums">{{ statusCounts[s] }}</span>
           </button>
-          <p v-if="!pipeline.some((s) => statusCounts[s])" class="px-2.5 text-xs text-muted-foreground/80">Zatím nic odeslaného.</p>
         </div>
 
         <div class="mt-auto flex flex-col gap-3 p-3">
@@ -198,19 +196,20 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
       <div class="flex min-w-0 flex-1 flex-col">
         <!-- Top bar (mobile) -->
         <header class="flex items-center gap-1 border-b bg-sidebar/80 px-2 py-2 backdrop-blur-xl md:hidden">
-          <RouterLink to="/" class="mr-1 flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+          <RouterLink to="/" class="mr-1 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <BriefcaseBusinessIcon class="size-4" />
           </RouterLink>
-          <RouterLink
-            v-for="item in nav"
-            :key="item.to"
-            :to="item.to"
-            :aria-label="item.label"
-            :class="cn('flex size-8 items-center justify-center rounded-lg', item.active ? 'bg-background text-primary shadow-xs' : 'text-muted-foreground')"
-          >
-            <component :is="item.icon" class="size-4" />
-          </RouterLink>
-          <div class="flex-1" />
+          <nav class="flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none]">
+            <RouterLink
+              v-for="item in nav"
+              :key="item.to"
+              :to="item.to"
+              :aria-label="item.label"
+              :class="cn('flex size-10 shrink-0 items-center justify-center rounded-lg', item.active ? 'bg-background text-primary shadow-xs' : 'text-muted-foreground')"
+            >
+              <component :is="item.icon" class="size-4" />
+            </RouterLink>
+          </nav>
           <Button size="icon-sm" variant="ghost" aria-label="Přidat pozici" @click="addOpen = true"><PlusIcon /></Button>
           <Button size="sm" :disabled="progress.running" @click="startRefresh()">
             <RefreshCwIcon :class="cn(progress.running && 'animate-spin')" />

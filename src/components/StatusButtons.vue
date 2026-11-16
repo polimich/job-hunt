@@ -9,7 +9,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { STATUS_META, statusMeta } from '@/lib/status';
 import { cn } from '@/lib/utils';
 
-const props = defineProps<{ status: Status; showKeys?: boolean }>();
+const props = defineProps<{ status: Status }>();
 defineEmits<{ set: [status: Status] }>();
 
 // Forward steps are buttons; endings sit in a menu. "closed" is set by refresh, not by hand.
@@ -37,7 +37,6 @@ const ended = computed(() => endings.some((s) => s.id === props.status));
       >
         <component :is="s.icon" class="size-3.5" />
         {{ s.label }}
-        <Kbd v-if="showKeys && s.key" class="ml-0.5 h-4 min-w-4 bg-background/70 text-[10px]">{{ s.key }}</Kbd>
       </button>
     </div>
 

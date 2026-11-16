@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { DownloadIcon, LoaderCircleIcon, PlusIcon } from '@lucide/vue';
+import { placeOf } from '../../shared/search';
 import type { Listing, ManualInput, Status } from '../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,11 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { statusMeta } from '@/lib/status';
 import { PLACE_LABEL } from '../format';
-import { addListing, addOpen, previewUrl, setState } from '../store';
+import { addListing, addOpen, db, previewUrl, setState } from '../store';
 
 const router = useRouter();
 
-const blank = (): Required<ManualInput> => ({ url: '', title: '', company: '', location: '', place: 'brno', mode: '', salaryPosted: '', text: '' });
+const blank = (): Required<ManualInput> => ({ url: '', title: '', company: '', location: '', place: 'local', mode: '', salaryPosted: '', text: '' });
 const fields = ref(blank());
 const status = ref<Status>('interested');
 const fetching = ref(false);
@@ -42,8 +43,7 @@ async function fetchUrl() {
     fields.value.company ||= p.company;
     fields.value.location ||= p.location;
     fields.value.text ||= p.text;
-    if (/brno/i.test(p.location)) fields.value.place = 'brno';
-    else if (/prah|prague/i.test(p.location)) fields.value.place = 'praha';
+    if (p.location) fields.value.place = placeOf(p.location, '', db.settings.location);
     if (!p.title && !p.text) toast.info('Ze stránky se nic nenačetlo', { description: 'Vyplň údaje ručně.' });
   } catch (e) {
     toast.error('Stránku se nepodařilo načíst', { description: e instanceof Error ? e.message : String(e) });
@@ -103,7 +103,7 @@ async function save() {
           </div>
           <div class="flex flex-col gap-1.5">
             <Label for="add-location">Místo</Label>
-            <Input id="add-location" v-model="fields.location" placeholder="Brno, hybrid" />
+            <Input id="add-location" v-model="fields.location" placeholder="Město, hybrid" />
           </div>
           <div class="flex flex-col gap-1.5">
             <Label>Oblast</Label>

@@ -11,7 +11,6 @@ import {
   CircleCheckBigIcon,
   FlameIcon,
   GhostIcon,
-  PlusIcon,
   SparklesIcon,
   SendIcon,
   StarIcon,
@@ -26,7 +25,7 @@ import StatTile from '../components/StatTile.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import { dueLabel, shortDate } from '../format';
 import { weeklyGoal } from '../stats';
-import { addOpen, db, due, dueTasks, filters, followUp, latestAdded, listingById, planned, updateTask, setState, statusOf, todayIso, upcomingInterviews, type AgendaItem } from '../store';
+import { db, due, dueTasks, filters, followUp, latestAdded, listingById, planned, updateTask, setState, statusOf, todayIso, upcomingInterviews, type AgendaItem } from '../store';
 
 const router = useRouter();
 
@@ -78,36 +77,32 @@ function showNew() {
 
 <template>
   <div class="mx-auto flex max-w-6xl flex-col gap-6 px-4 pt-6 pb-16 md:px-6 lg:px-10">
-    <header class="flex animate-rise flex-wrap items-end justify-between gap-4">
+    <header class="flex flex-wrap items-end justify-between gap-4">
       <div class="flex flex-col gap-1">
         <p class="text-sm font-medium text-muted-foreground">{{ longDate[0]?.toUpperCase() }}{{ longDate.slice(1) }}</p>
         <h1 class="flex items-center gap-2 text-3xl font-bold tracking-tight sm:text-4xl">
-          {{ greeting }} <span class="inline-block origin-[70%_80%] animate-wiggle">👋</span>
+          {{ greeting }} <span class="inline-block">👋</span>
         </h1>
         <p class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           {{ summary }}
-          <span v-if="goal.streak" class="inline-flex animate-pop items-center gap-1 rounded-full bg-(--st-offer-bg) px-2 py-0.5 text-xs font-bold text-(--st-offer-fg)">
+          <span v-if="goal.streak" class="inline-flex items-center gap-1 rounded-full bg-(--st-offer-bg) px-2 py-0.5 text-xs font-bold text-(--st-offer-fg)">
             <FlameIcon class="size-3.5" /> {{ goal.streak }} {{ goal.streak === 1 ? 'týden' : goal.streak < 5 ? 'týdny' : 'týdnů' }} v řadě
           </span>
         </p>
       </div>
-      <Button variant="outline" @click="addOpen = true"><PlusIcon /> Přidat pozici</Button>
     </header>
 
     <!-- Summary tiles -->
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatTile label="K vyřízení" :value="due.length + dueTasks.length" :icon="AlarmClockIcon" color="offer" :index="1" />
-      <StatTile label="Pohovory do 14 dní" :value="interviews.length" :icon="CalendarClockIcon" color="interview" :index="2" />
+    <div class="grid grid-cols-2 gap-3">
       <StatTile
         label="Odesláno tento týden"
         :value="goal.thisWeek"
         :icon="SendIcon"
         color="applied"
-        :index="3"
         :progress="goal.thisWeek / goal.goal"
         :hint="goal.thisWeek >= goal.goal ? `Cíl ${goal.goal} splněn 🎉` : `Cíl ${goal.goal} · zbývá ${goal.goal - goal.thisWeek}`"
       />
-      <StatTile label="Nové z obnovení" :value="freshCount" :icon="SparklesIcon" color="interested" clickable :index="4" @click="showNew" />
+      <StatTile label="Nové z obnovení" :value="freshCount" :icon="SparklesIcon" color="interested" clickable @click="showNew" />
     </div>
 
     <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -115,21 +110,20 @@ function showNew() {
         <!-- Due -->
         <section class="flex flex-col gap-2">
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <AlarmClockIcon :class="cn('size-5 text-primary', (due.length || dueTasks.length) && 'animate-wiggle')" /> K vyřízení
+            <AlarmClockIcon class="size-5 text-primary" /> K vyřízení
           </h2>
           <TransitionGroup v-if="dueTasks.length" name="list" tag="ul" class="relative flex flex-col gap-2">
             <li
-              v-for="(t, i) in dueTasks"
+              v-for="t in dueTasks"
               :key="t.id"
-              :style="{ '--i': i + 5 }"
-              class="flex animate-rise items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-soft"
+              class="flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-soft"
             >
               <button
                 type="button"
                 role="checkbox"
                 aria-checked="false"
                 :aria-label="`Hotovo: ${t.title}`"
-                class="flex size-6 shrink-0 items-center justify-center rounded-lg border-2 border-foreground/25 transition-all duration-300 ease-(--ease-spring) hover:scale-110 hover:border-(--st-interview-dot) hover:bg-(--st-interview-bg)"
+                class="flex size-6 shrink-0 items-center justify-center rounded-lg border-2 border-foreground/25 transition-colors duration-150 hover:border-(--st-interview-dot) hover:bg-(--st-interview-bg)"
                 @click="act(updateTask(t.id, { done: true }), 'Úkol hotový')"
               >
                 <CheckIcon class="size-3.5 opacity-0 transition-opacity hover:opacity-60" />
@@ -153,18 +147,17 @@ function showNew() {
               </DropdownMenu>
             </li>
           </TransitionGroup>
-          <div v-if="!due.length && !dueTasks.length" class="flex animate-rise items-center gap-4 rounded-2xl border border-dashed bg-card/60 p-5 text-sm text-muted-foreground">
-            <span class="flex size-12 shrink-0 animate-float items-center justify-center rounded-2xl bg-(--st-interview-bg) text-(--st-interview-fg)">
+          <div v-if="!due.length && !dueTasks.length" class="flex items-center gap-4 rounded-2xl border border-dashed bg-card/60 p-5 text-sm text-muted-foreground">
+            <span class="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-(--st-interview-bg) text-(--st-interview-fg)">
               <CircleCheckBigIcon class="size-6" />
             </span>
             <span><span class="block font-display text-base font-bold text-foreground">Na dnes máš hotovo</span>Až něco odešleš, připomínka se objeví tady.</span>
           </div>
           <TransitionGroup v-else name="list" tag="ul" class="relative flex flex-col gap-2.5">
             <li
-              v-for="(x, i) in due"
+              v-for="x in due"
               :key="x.listing.id"
-              :style="{ '--i': i + 5 }"
-              class="lift flex animate-rise flex-col gap-3 rounded-2xl border bg-card p-4 shadow-soft sm:flex-row sm:items-center"
+              class="lift flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-soft sm:flex-row sm:items-center"
             >
               <RouterLink :to="`/pozice/${x.listing.id}`" class="flex min-w-0 flex-1 items-center gap-3">
                 <CompanyAvatar :name="x.listing.company" size="lg" class="size-12! rounded-2xl! text-base!" />
@@ -176,7 +169,7 @@ function showNew() {
                   <p class="truncate text-sm font-medium">{{ x.listing.title }}</p>
                   <p class="mt-0.5 text-sm">
                     <span :class="cn('inline-flex items-center gap-1.5 font-semibold', x.state.nextAt < todayIso ? 'text-destructive' : 'text-primary')">
-                      <span v-if="x.state.nextAt < todayIso" class="relative flex size-2"><span class="absolute inline-flex size-full animate-ping rounded-full bg-destructive opacity-60" /><span class="relative inline-flex size-2 rounded-full bg-destructive" /></span>
+                      <span v-if="x.state.nextAt < todayIso" class="inline-flex size-2 rounded-full bg-destructive" />
                       {{ dueLabel(daysBetween(todayIso, x.state.nextAt)) }}
                     </span>
                     <span class="text-muted-foreground"> · {{ x.state.nextNote || 'Ozvat se' }}</span>
@@ -210,7 +203,7 @@ function showNew() {
         <section v-if="soon.length" class="flex flex-col gap-2">
           <h2 class="text-lg font-bold">Příštích 7 dní</h2>
           <ul class="divide-y overflow-hidden rounded-2xl border bg-card shadow-soft">
-            <li v-for="(x, i) in soon" :key="x.listing.id" class="animate-rise" :style="{ '--i': i + 6 }">
+            <li v-for="x in soon" :key="x.listing.id">
               <RouterLink :to="`/pozice/${x.listing.id}`" class="flex items-center gap-3 px-3.5 py-2.5 transition-colors hover:bg-accent/60">
                 <span class="w-20 shrink-0 rounded-lg bg-muted px-1.5 py-0.5 text-center whitespace-nowrap text-xs font-medium tabular-nums text-muted-foreground">{{ shortDate(x.state.nextAt) }}</span>
                 <span class="min-w-0 flex-1 truncate text-sm"><span class="font-medium">{{ x.listing.company }}</span> · {{ x.state.nextNote || 'Ozvat se' }}</span>
@@ -229,7 +222,7 @@ function showNew() {
             Žádný naplánovaný. Zapiš ho v detailu pozice do Historie.
           </p>
           <ul v-else class="flex flex-col gap-2">
-            <li v-for="(x, i) in interviews" :key="x.event.id" class="animate-rise" :style="{ '--i': i + 5 }">
+            <li v-for="x in interviews" :key="x.event.id">
               <RouterLink :to="`/pozice/${x.listing.id}`" class="lift flex gap-3 rounded-2xl border bg-card p-3 shadow-soft">
                 <div class="flex w-13 shrink-0 flex-col items-center justify-center rounded-xl bg-(--st-interview-bg) py-1.5 text-(--st-interview-fg)">
                   <span class="text-[10px] font-medium uppercase">{{ shortDate(x.event.at).split(' ')[0] }}</span>
@@ -251,7 +244,7 @@ function showNew() {
             Nic. Označ zajímavé pozice v seznamu klávesou <kbd class="rounded border px-1 font-mono text-xs">i</kbd>.
           </p>
           <TransitionGroup v-else name="list" tag="ul" class="relative divide-y overflow-hidden rounded-2xl border bg-card shadow-soft">
-            <li v-for="(l, i) in toApply" :key="l.id" :style="{ '--i': i + 6 }" class="flex animate-rise items-center gap-2 bg-card py-2.5 pr-2 pl-3 transition-colors hover:bg-accent/50">
+            <li v-for="l in toApply" :key="l.id" class="flex items-center gap-2 bg-card py-2.5 pr-2 pl-3 transition-colors hover:bg-accent/50">
               <RouterLink :to="`/pozice/${l.id}`" class="flex min-w-0 flex-1 items-center gap-2.5">
                 <FitBadge :fit="l.fit" :auto="l.fitSource === 'auto'" size="sm" />
                 <span class="min-w-0">

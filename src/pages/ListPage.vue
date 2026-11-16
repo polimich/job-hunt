@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { useMediaQuery } from '@vueuse/core';
 import {
   ArrowUpDownIcon,
   KeyboardIcon,
@@ -26,7 +27,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { STATUS_META, statusMeta } from '@/lib/status';
+import { STATUS_META } from '@/lib/status';
 import { ENDINGS } from '../../shared/pipeline';
 import { cn } from '@/lib/utils';
 import { DEFAULT_FILTERS, type Filters } from '../filters';
@@ -41,10 +42,17 @@ const listEl = ref<HTMLElement>();
 const showHelp = ref(false);
 const moreFilters = ref(false);
 
+// Below md there is no room for the detail pane: a row tap opens the listing page.
+const desktop = useMediaQuery('(min-width: 768px)');
+function pick(l: Listing) {
+  selectedId.value = l.id;
+  if (!desktop.value) void router.push(`/pozice/${l.id}`);
+}
+
 const selected = computed<Listing | undefined>(() => visible.value.find((l) => l.id === selectedId.value) ?? visible.value[0]);
 watch(selected, (l) => { if (l) selectedId.value = l.id; }, { immediate: true });
 
-const places: Listing['place'][] = ['brno', 'remote', 'praha'];
+const places: Listing['place'][] = ['local', 'remote', 'jinde'];
 function toggle<T>(list: T[], value: T) {
   const i = list.indexOf(value);
   if (i >= 0) list.splice(i, 1);
@@ -55,7 +63,7 @@ function reset() {
 }
 const activeExtra = computed(
   () =>
-    filters.tags.length + (filters.labels?.length ?? 0) + Number(!!filters.minRating) + Number(filters.onlyVue) + Number(filters.onlyEmail) +
+    filters.tags.length + (filters.labels?.length ?? 0) + Number(!!filters.minRating) + Number(filters.onlyEmail) +
     Number(filters.onlyNew) + Number(!!filters.minSalary) + Number(!!filters.size),
 );
 const isDefault = computed(() => {
@@ -144,8 +152,10 @@ function onKey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKey));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
-/** Only statuses that have something in them, plus any that are selected. */
-const chipStatuses = computed(() => STATUS_META.filter((s) => statusCounts.value[s.id] || filters.statuses.includes(s.id)));
+/** Only statuses that have something in them, plus any toggled away from the default. */
+const chipStatuses = computed(() =>
+  STATUS_META.filter((s) => statusCounts.value[s.id] || filters.statuses.includes(s.id) !== DEFAULT_FILTERS.statuses.includes(s.id)),
+);
 
 const SHORTCUTS: [string[], string][] = [
   [['j', 'k'], 'Další / předchozí pozice'],
@@ -263,7 +273,6 @@ const SHORTCUTS: [string[], string][] = [
               <div class="flex flex-wrap gap-1.5">
                 <FilterChip :on="filters.onlyNew" @toggle="filters.onlyNew = !filters.onlyNew">Nové z posledního obnovení</FilterChip>
                 <FilterChip :on="filters.onlyEmail" @toggle="filters.onlyEmail = !filters.onlyEmail"><MailIcon /> S e-mailem</FilterChip>
-                <FilterChip :on="filters.onlyVue" @toggle="filters.onlyVue = !filters.onlyVue">Zmiňuje Vue</FilterChip>
                 <FilterChip :on="!!filters.minSalary" @toggle="filters.minSalary = filters.minSalary ? 0 : db.settings.minSalary">
                   Mzda dosáhne {{ Math.round(db.settings.minSalary / 1000) }} tis.
                 </FilterChip>
@@ -307,10 +316,10 @@ const SHORTCUTS: [string[], string][] = [
     </section>
 
     <!-- Panes -->
-    <div class="grid min-h-0 flex-1 grid-rows-[45%_1fr] md:grid-cols-[minmax(320px,400px)_1fr] md:grid-rows-1">
+    <div class="grid min-h-0 flex-1 grid-rows-1 md:grid-cols-[minmax(320px,400px)_1fr]">
       <div
         ref="listEl"
-        class="overflow-y-auto border-b bg-sidebar/60 scrollbar-thin md:border-r md:border-b-0"
+        class="overflow-y-auto bg-sidebar/60 scrollbar-thin md:border-r"
         role="listbox"
         aria-label="Pozice"
         tabindex="0"
@@ -320,33 +329,23 @@ const SHORTCUTS: [string[], string][] = [
         </p>
         <div class="flex flex-col gap-1 p-2">
           <button
-            v-for="(l, i) in visible"
+            v-for="l in visible"
             :key="l.id"
             type="button"
             role="option"
-            :style="{ '--i': i }"
             :aria-selected="l.id === selected?.id"
             :class="cn(
-              'group relative flex w-full animate-rise items-start gap-3 overflow-hidden rounded-2xl border p-3 text-left outline-none',
-              'transition-[transform,background-color,border-color,box-shadow] duration-300 ease-(--ease-spring)',
+              'group relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border p-3 text-left outline-none',
+              'transition-colors duration-150',
               'focus-visible:ring-3 focus-visible:ring-ring/50',
               l.id === selected?.id
-                ? 'translate-x-1 border-primary/25 bg-card shadow-pop ring-2 ring-primary/15'
-                : 'border-transparent hover:translate-x-0.5 hover:border-border hover:bg-card hover:shadow-soft',
+                ? 'border-border bg-card'
+                : 'border-transparent hover:border-border hover:bg-card',
               ENDINGS.includes(statusOf(l)) && statusOf(l) !== 'accepted' && 'opacity-55',
             )"
-            @click="selectedId = l.id"
-            @dblclick="router.push(`/pozice/${l.id}`)"
+            @click="pick(l)"
           >
-            <span
-              aria-hidden="true"
-              :class="cn(
-                'absolute inset-y-2 left-0 w-1 rounded-r-full transition-transform duration-300 ease-(--ease-spring)',
-                statusOf(l) === 'new' ? 'bg-primary' : statusMeta(statusOf(l)).dot,
-                l.id === selected?.id || statusOf(l) !== 'new' ? 'scale-y-100' : 'scale-y-0',
-              )"
-            />
-            <CompanyAvatar :name="l.company" class="transition-transform duration-300 ease-(--ease-spring) group-hover:scale-110 group-hover:-rotate-6" />
+            <CompanyAvatar :name="l.company" />
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
               <span class="flex items-center gap-1.5">
                 <span class="truncate text-sm font-semibold">{{ l.company }}</span>
@@ -360,8 +359,6 @@ const SHORTCUTS: [string[], string][] = [
                 <span>{{ PLACE_LABEL[l.place] }}</span>
                 <span class="text-border">•</span>
                 <SalaryRange :company="companyById.get(l.companyId)" :posted="l.salaryPosted" class="text-xs" />
-                <MailIcon v-if="companyById.get(l.companyId)?.emails.length" class="size-3" aria-label="má e-mail" />
-                <span v-if="l.vue" class="rounded bg-success-soft px-1 text-[10px] font-medium text-success">Vue</span>
                 <RatingStars v-if="db.state[l.id]?.rating" :model-value="db.state[l.id]!.rating" readonly size="sm" />
                 <span v-for="t in db.state[l.id]?.labels ?? []" :key="t" class="rounded-full bg-(--st-talking-bg) px-1.5 text-[10px] font-semibold text-(--st-talking-fg)">{{ t }}</span>
               </span>
@@ -381,11 +378,9 @@ const SHORTCUTS: [string[], string][] = [
         </Empty>
       </div>
 
-      <div class="overflow-y-auto scrollbar-thin">
+      <div class="hidden overflow-y-auto scrollbar-thin md:block">
         <div class="mx-auto max-w-4xl px-6 pt-6 pb-16 lg:px-10">
-          <Transition name="page" mode="out-in">
-            <ListingDetail v-if="selected" :key="selected.id" :listing="selected" show-keys />
-          </Transition>
+          <ListingDetail v-if="selected" :key="selected.id" :listing="selected" />
           <Empty v-if="!selected" class="py-24">
             <EmptyHeader>
               <EmptyTitle>Vyber pozici vlevo</EmptyTitle>

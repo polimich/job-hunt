@@ -8,7 +8,6 @@ export interface Filters {
   minFit: number;
   tags: string[];
   onlyRecommended: boolean;
-  onlyVue: boolean;
   onlyEmail: boolean;
   onlyNew: boolean;
   /** Estimated top of the salary range must reach this many CZK; 0 = off. */
@@ -28,7 +27,6 @@ export const DEFAULT_FILTERS: Filters = {
   minFit: 1,
   tags: [],
   onlyRecommended: false,
-  onlyVue: false,
   onlyEmail: false,
   onlyNew: false,
   minSalary: 0,
@@ -63,7 +61,6 @@ export function applyFilters(listings: Listing[], f: Filters, ctx: Context): Lis
     if (l.fit < f.minFit) return false;
     if (f.tags.length && !f.tags.every((t) => l.tags.includes(t))) return false;
     if (f.onlyRecommended && !l.recommended) return false;
-    if (f.onlyVue && !l.vue) return false;
     if (f.onlyEmail && !company?.emails.length) return false;
     if (f.onlyNew && !ctx.latestAdded.has(l.id)) return false;
     if (f.minSalary && (company?.salary?.max ?? 0) < f.minSalary) return false;

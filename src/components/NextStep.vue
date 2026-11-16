@@ -26,7 +26,7 @@ const inDays = (n: number) => setDate(addDays(todayIso.value, n));
 </script>
 
 <template>
-  <section :class="cn('rounded-2xl border bg-card shadow-soft p-3.5', due && 'border-(--st-offer-dot)/40 bg-(--st-offer-bg)/60')">
+  <section :class="cn('rounded-2xl border bg-card p-3.5', due && 'border-(--st-offer-dot)/40 bg-(--st-offer-bg)/60')">
     <div class="mb-2 flex items-center justify-between gap-2">
       <h3 class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <AlarmClockIcon class="size-3.5" /> Další krok

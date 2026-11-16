@@ -60,7 +60,7 @@ const linkedinUrl = (v: string) => (/^https?:\/\//.test(v) ? v : `https://www.li
       Zatím nikoho. Přidej recruitera, budoucího šéfa nebo toho, kdo tě doporučil, ať víš, komu psát.
     </p>
     <TransitionGroup v-else name="list" tag="ul" class="relative grid gap-2 sm:grid-cols-2">
-      <li v-for="c in people" :key="c.id" class="group flex gap-3 rounded-2xl border bg-card p-3 shadow-soft">
+      <li v-for="c in people" :key="c.id" class="group flex gap-3 rounded-2xl border bg-card p-3">
         <CompanyAvatar :name="c.name" size="sm" class="mt-0.5 size-9! rounded-xl!" />
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-semibold">{{ c.name }}</p>

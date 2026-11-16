@@ -6,7 +6,8 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { addDays, cleanLabels, emptyOffer, emptyState, followedUp, newEventId, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
-import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type Level, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { placeOf } from '../shared/search.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
 import { sourceInfo } from './sources/index.ts';
@@ -15,7 +16,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
 
 const app = new Hono();
 
@@ -114,7 +115,7 @@ app.post('/api/listings', async (c) => {
   if (!input.title?.trim() || !input.company?.trim()) return c.json({ error: 'title and company are required' }, 400);
   const listings = loadListings();
   const companies = loadCompanies();
-  const listing = manualListing(input, companies, today());
+  const listing = manualListing(input, companies, today(), loadSettings());
   if (listings.some((l) => l.id === listing.id)) return c.json({ error: 'Tahle pozice už v seznamu je', id: listing.id }, 409);
   saveCompanies(companies);
   saveListing(listing);
@@ -149,20 +150,33 @@ app.patch('/api/listings/:id', async (c) => {
   return c.json(listing);
 });
 
+const LEVELS: Level[] = ['any', 'junior', 'medior', 'senior', 'lead'];
+const words = (v: unknown, max: number) =>
+  Array.isArray(v) ? [...new Set(v.map((x) => String(x).trim().slice(0, 60)).filter(Boolean))].slice(0, max) : [];
+
 app.put('/api/settings', async (c) => {
-  const next: Settings = { ...loadSettings(), ...((await c.req.json()) as Partial<Settings>) };
-  if (next.excludeTitle) {
-    try {
-      new RegExp(next.excludeTitle);
-    } catch {
-      return c.json({ error: 'excludeTitle is not a valid regular expression' }, 400);
-    }
-  }
+  const prev = loadSettings();
+  const next: Settings = { ...prev, ...((await c.req.json()) as Partial<Settings>) };
+  next.keywords = words(next.keywords, 12);
+  next.location = String(next.location ?? '').trim().slice(0, 60);
+  next.radiusKm = Math.min(Math.max(Math.round(Number(next.radiusKm) || 0), 0), 100);
+  next.remote = next.remote !== false;
+  next.postedWithinDays = Math.min(Math.max(Math.round(Number(next.postedWithinDays) || 0), 0), 90);
+  next.titleMustMatch = words(next.titleMustMatch, 60);
+  next.excludeWords = words(next.excludeWords, 100);
+  next.mpsvCategories = words(next.mpsvCategories, 20).filter((g) => /^\d{1,4}$/.test(g));
+  next.level = LEVELS.includes(next.level) ? next.level : 'any';
   next.followUpDays = Math.min(Math.max(Math.round(Number(next.followUpDays) || 7), 1), 60);
   next.autoRefresh = next.autoRefresh !== false;
   next.weeklyGoal = Math.min(Math.max(Math.round(Number(next.weeklyGoal) || 5), 1), 50);
-  next.skills = Array.isArray(next.skills) ? [...new Set(next.skills.map((x) => String(x).trim()).filter(Boolean))].slice(0, 60) : [];
+  next.skills = words(next.skills, 60);
   saveSettings(next);
+  // "Local" means the search town, so a new town re-sorts what is already in the list.
+  if (next.location !== prev.location) {
+    const listings = loadListings();
+    for (const l of listings) if (!l.manual) l.place = placeOf(l.location, l.mode === 'neuvedeno' ? '' : l.mode, next.location);
+    saveListings(listings);
+  }
   return c.json(next);
 });
 

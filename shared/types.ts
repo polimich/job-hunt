@@ -57,7 +57,8 @@ export interface Listing {
   /** Office / hybrid / remote, as the posting words it. */
   mode: string;
   /** Normalised place bucket used by the filters. */
-  place: 'brno' | 'remote' | 'praha' | 'jinde';
+  /** In the search town (or anywhere in Czechia when none is set), remote, or elsewhere. */
+  place: 'local' | 'remote' | 'jinde';
   contract: string;
   stack: string;
   tags: string[];
@@ -71,7 +72,7 @@ export interface Listing {
   recommended: boolean;
   strengths: string;
   weaknesses: string;
-  /** How the posting mentions Vue, or '' when it does not. */
+  /** Legacy: how postings from before v0.8 mention Vue. No longer filled or shown. */
   vue: string;
   /** Full posting text. */
   text: string;
@@ -241,15 +242,30 @@ export interface RefreshProgress {
   error?: string;
 }
 
+export type Level = 'any' | 'junior' | 'medior' | 'senior' | 'lead';
+
 export interface Settings {
   /** Intro e-mail templates; {company} and {title} are replaced. */
   introCs: { subject: string; body: string };
   introEn: { subject: string; body: string };
-  /** Search terms used on refresh. */
+  /** Search terms; each one is searched on every portal that has a search. */
   keywords: string[];
-  vueKeywords: string[];
-  /** Postings whose title matches are skipped on refresh. */
-  excludeTitle: string;
+  /** Town to search in; '' = the whole of Czechia. */
+  location: string;
+  /** Distance around the town in km (jobs.cz, LinkedIn); 0 = the town only. */
+  radiusKm: number;
+  /** Also look for fully remote jobs anywhere in Czechia. */
+  remote: boolean;
+  /** Only postings from the last N days (LinkedIn); 0 = any age. */
+  postedWithinDays: number;
+  /** A new posting's title must contain one of these; empty = trust each portal's search. */
+  titleMustMatch: string[];
+  /** New postings whose title contains one of these are skipped. */
+  excludeWords: string[];
+  /** Úřad práce: CZ-ISCO groups taken whole, besides postings that mention a keyword. */
+  mpsvCategories: string[];
+  /** Seniority I'm after; the automatic match score prefers it. */
+  level: Level;
   /** Minimum gross monthly salary used by the "under my minimum" hint. */
   minSalary: number;
   /** Days after sending an application (or a follow-up) before the next reminder. */

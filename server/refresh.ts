@@ -2,19 +2,15 @@
  * Refresh: re-check every open listing, search the boards for new ones, read their text
  * and record what changed. Runs as one background job; progress is polled by the UI.
  */
-import { SOURCE_LABELS, type Company, type Listing, type RefreshProgress, type RefreshRun } from '../shared/types.ts';
-import { autoFit, extractTags, placeOf, vueMention } from './score.ts';
+import { matcher, placeOf } from '../shared/search.ts';
+import { SOURCE_LABELS, type Company, type Listing, type RefreshProgress, type RefreshRun, type Settings } from '../shared/types.ts';
+import { autoFit, extractTags } from './score.ts';
 import { detailFor, enabledSources } from './sources/index.ts';
 import type { Candidate, Detail } from './sources/types.ts';
 import { addRun, loadCompanies, loadListings, loadSettings, saveCompanies, saveListings, slug } from './store.ts';
 
 /** Reading a new posting costs a rate-limited request, so one run takes at most this many. */
 const MAX_NEW_PER_RUN = 40;
-
-const RELEVANT_TITLE =
-  /react|vue|nuxt|front[- ]?end|full[- ]?stack|typescript|javascript|web (developer|engineer)|software (engineer|developer)|vývojář|programátor|\bdeveloper\b/i;
-const DEFAULT_EXCLUDE =
-  /\bjava\b(?!script)|\bphp\b|android|\bios\b|devops|data (engineer|scientist|analyst)|\bqa\b|tester|test engineer|sales|marketing|c\+\+|embedded|ruby|golang|designer|product (manager|owner)|support|kotlin|swift|machine learning|analyst|\bsap\b|salesforce|security|\bsre\b|recruit|manager|intern\b|scientist|firmware|hardware|consultant|architect|\brust\b|backend|back[- ]end|servicenow|sharepoint|mainframe|director|\blead\b|principal|\bstaff\b|junior|power platform/i;
 
 let progress: RefreshProgress = { running: false, step: '', done: 0, total: 0 };
 
@@ -28,14 +24,14 @@ export { detailFor };
 
 const titleKey = (company: string, title: string) => `${slug(company)}|${slug(title)}`;
 
-export function toListing(c: Candidate, d: Detail, companies: Company[], today: string): Listing {
+export function toListing(c: Candidate, d: Detail, companies: Company[], today: string, settings: Settings): Listing {
   let company = companies.find((x) => x.id === slug(c.company));
   if (!company) {
     company = { id: slug(c.company) || `firma-${c.sourceId}`, name: c.company || 'Neznámá firma', size: 'neznámá', emails: [] };
     companies.push(company);
   }
   const mode = c.mode ?? '';
-  const place = placeOf(c.location, mode);
+  const place = c.local ? 'local' : placeOf(c.location, mode, settings.location.trim());
   const all = `${c.title}\n${d.text}`;
   return {
     id: `${c.source}-${c.sourceId}`,
@@ -53,12 +49,12 @@ export function toListing(c: Candidate, d: Detail, companies: Company[], today: 
     tags: extractTags(all),
     salaryPosted: c.salaryPosted ?? '',
     benefits: '',
-    fit: autoFit(c.title, d.text, place),
+    fit: autoFit(c.title, d.text, place, settings),
     fitSource: 'auto',
     recommended: false,
     strengths: '',
     weaknesses: '',
-    vue: vueMention(all),
+    vue: '',
     text: d.text,
     firstSeen: today,
     lastChecked: today,
@@ -104,6 +100,11 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
   }
 
   // 2. Search the boards.
+  if (!settings.keywords.length) {
+    result.errors.push('Nejsou nastavená klíčová slova, nové inzeráty se nehledaly. Doplň je v Nastavení → Hledání.');
+    addRun(result);
+    return result;
+  }
   step('Hledám nové inzeráty', 0, 0);
   const candidates: Candidate[] = [];
   for (const src of enabledSources(settings)) {
@@ -115,7 +116,8 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
   }
 
   // 3. Keep relevant titles we have not seen, one per company + title.
-  const exclude = settings.excludeTitle ? new RegExp(settings.excludeTitle, 'i') : DEFAULT_EXCLUDE;
+  const relevant = settings.titleMustMatch.length ? matcher(settings.titleMustMatch) : () => true;
+  const excluded = matcher(settings.excludeWords);
   const knownIds = new Set(listings.map((l) => `${l.source}-${l.sourceId}`));
   const knownTitles = new Set(listings.map((l) => titleKey(l.company, l.title)));
   const fresh: Candidate[] = [];
@@ -123,7 +125,7 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
     const id = `${c.source}-${c.sourceId}`;
     const key = titleKey(c.company, c.title);
     if (knownIds.has(id) || knownTitles.has(key)) continue;
-    if (!RELEVANT_TITLE.test(c.title) || exclude.test(c.title)) continue;
+    if (!relevant(c.title) || excluded(c.title)) continue;
     knownIds.add(id);
     knownTitles.add(key);
     fresh.push(c);
@@ -143,7 +145,7 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
     // APIs and open data already return the text; only scraped sources need a detail request.
     const d = c.text ? { open: true, text: c.text } : await detailFor(c);
     if (d.open === false) continue;
-    const listing = toListing(c, d, companies, today);
+    const listing = toListing(c, d, companies, today, settings);
     listings.push(listing);
     result.added.push(listing.id);
   }

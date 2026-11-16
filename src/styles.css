@@ -268,6 +268,26 @@
   ::selection {
     @apply bg-primary/20;
   }
+  button:not(:disabled),
+  [role="button"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  [role="combobox"],
+  select,
+  summary,
+  label:has(input[type="checkbox"], input[type="radio"], input[type="file"], [role="checkbox"], [role="radio"]),
+  input[type="file"],
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+  :disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
 }
 
 @utility scrollbar-thin {
@@ -280,23 +300,6 @@
 }
 
 /* ---------- Motion ---------- */
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Staggered entrance: set --i on each item (0, 1, 2…). */
-@utility animate-rise {
-  animation: rise 0.55s var(--ease-out-soft) both;
-  animation-delay: calc(min(var(--i, 0), 14) * 40ms);
-}
 
 @keyframes pop {
   0% {
@@ -316,59 +319,25 @@
   animation: pop 0.45s var(--ease-spring) both;
 }
 
-@keyframes wiggle {
-  0%, 100% { transform: rotate(0); }
-  15% { transform: rotate(-14deg); }
-  30% { transform: rotate(12deg); }
-  45% { transform: rotate(-8deg); }
-  60% { transform: rotate(5deg); }
-  75% { transform: rotate(0); }
-}
-
-/* Alarm-clock nudge: plays once, then every few seconds. */
-@utility animate-wiggle {
-  animation: wiggle 1.2s ease-in-out 0.4s 3;
-  transform-origin: 50% 20%;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0) rotate(-3deg); }
-  50% { transform: translateY(-6px) rotate(3deg); }
-}
-
-@utility animate-float {
-  animation: float 4s ease-in-out infinite;
-}
-
-/* Cards you can click: lift with a little bounce. */
+/* Cards you can click: a subtle lift. */
 @utility lift {
   transition:
-    transform 0.35s var(--ease-spring),
-    box-shadow 0.25s ease,
-    border-color 0.2s ease,
-    background-color 0.2s ease;
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
   &:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--sh-pop);
-  }
-  &:active {
-    transform: translateY(-1px) scale(0.99);
+    transform: translateY(-1px);
+    box-shadow: var(--sh-soft);
   }
 }
 
-/* Route change: content floats up into place. */
-.page-enter-active {
-  transition:
-    opacity 0.35s var(--ease-out-soft),
-    transform 0.45s var(--ease-out-soft);
-}
+/* Route change: quick fade. */
+.page-enter-active,
 .page-leave-active {
-  transition: opacity 0.12s ease;
+  transition: opacity 0.15s ease;
 }
-.page-enter-from {
-  opacity: 0;
-  transform: translateY(14px);
-}
+.page-enter-from,
 .page-leave-to {
   opacity: 0;
 }
@@ -378,13 +347,13 @@
 .list-enter-active,
 .list-leave-active {
   transition:
-    transform 0.45s var(--ease-spring),
-    opacity 0.3s ease;
+    transform 0.2s ease-out,
+    opacity 0.2s ease-out;
 }
 .list-enter-from,
 .list-leave-to {
   opacity: 0;
-  transform: scale(0.94) translateY(8px);
+  transform: translateY(8px);
 }
 .list-leave-active {
   position: absolute;
@@ -401,14 +370,3 @@
     transition-duration: 0.01ms !important;
   }
 }
-
-/* Children float in one after another (detail page sections). */
-.stagger-children > * {
-  animation: rise 0.5s var(--ease-out-soft) both;
-}
-.stagger-children > :nth-child(2) { animation-delay: 40ms; }
-.stagger-children > :nth-child(3) { animation-delay: 80ms; }
-.stagger-children > :nth-child(4) { animation-delay: 120ms; }
-.stagger-children > :nth-child(5) { animation-delay: 160ms; }
-.stagger-children > :nth-child(6) { animation-delay: 200ms; }
-.stagger-children > :nth-child(n + 7) { animation-delay: 240ms; }

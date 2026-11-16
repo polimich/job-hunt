@@ -15,7 +15,7 @@ const EMPTY: Db = {
   docs: [],
   state: {},
   runs: [],
-  settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], vueKeywords: [], excludeTitle: '',
+  settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], location: '', radiusKm: 0, remote: true, postedWithinDays: 14, titleMustMatch: [], excludeWords: [], mpsvCategories: [], level: 'any',
     minSalary: 100000,
     followUpDays: 7,
     autoRefresh: true,
@@ -41,7 +41,10 @@ export const progress = ref<RefreshProgress>({ running: false, step: '', done: 0
 
 function savedFilters(): Filters {
   try {
-    return { ...DEFAULT_FILTERS, ...(JSON.parse(localStorage.getItem('filters') ?? '{}') as Partial<Filters>), query: '' };
+    const f = { ...DEFAULT_FILTERS, ...(JSON.parse(localStorage.getItem('filters') ?? '{}') as Partial<Filters>), query: '' };
+    // Places were renamed in v0.8 (brno/praha → local/jinde); drop values that no longer exist.
+    f.places = (f.places ?? []).filter((p) => p === 'local' || p === 'remote' || p === 'jinde');
+    return f;
   } catch {
     return { ...DEFAULT_FILTERS };
   }

@@ -1,5 +1,10 @@
-/** StartupJobs.cz: one POST endpoint returns every offer, page by page. */
+/**
+ * StartupJobs.cz: one POST endpoint returns every offer, page by page. The API has no keyword
+ * or place filter we can rely on, so offers are kept here by title keyword and town.
+ */
 import { fetchText, fromFirstHeading, htmlToText, sleep } from '../http.ts';
+import { hasAny, hasPhrase } from '../../shared/search.ts';
+import type { Settings } from '../../shared/types.ts';
 import type { Candidate, Detail } from './types.ts';
 
 interface Offer {
@@ -20,8 +25,10 @@ function salaryText(s: Offer['salary']): string {
   return `${[fmt(s.min), fmt(s.max)].filter(Boolean).join('–')} ${s.currency ?? ''} ${unit}`.trim();
 }
 
-export async function search(onStep: (label: string) => void): Promise<Candidate[]> {
+export async function search(s: Settings, onStep: (label: string) => void): Promise<Candidate[]> {
   const found: Candidate[] = [];
+  const town = s.location.trim();
+  const words = [...s.keywords, ...s.titleMustMatch];
   for (let page = 1; page <= 40; page++) {
     onStep(`StartupJobs: strana ${page}`);
     const { body } = await fetchText(`https://back.startupjobs.cz/api/search-offers?page=${page}`, {
@@ -39,8 +46,10 @@ export async function search(onStep: (label: string) => void): Promise<Candidate
     for (const o of offers) {
       const places = (o.locations ?? []).map((l) => l.place?.cs ?? l.name?.cs ?? '').filter(Boolean);
       const prefs = o.locationPreferences ?? [];
-      if (!places.some((p) => /brno/i.test(p)) && !prefs.includes('remote')) continue;
+      const local = !town || places.some((p) => hasPhrase(p, town));
+      if (!local && !(s.remote && prefs.includes('remote'))) continue;
       const title = o.name.cs ?? o.name.en ?? '';
+      if (!hasAny(title, words)) continue;
       found.push({
         source: 'startupjobs',
         sourceId: String(o.id),
@@ -50,6 +59,7 @@ export async function search(onStep: (label: string) => void): Promise<Candidate
         location: places.join(' / ') || 'neuvedeno',
         mode: prefs.join(', '),
         salaryPosted: salaryText(o.salary),
+        local: !!town && local,
       });
     }
     await sleep(300);

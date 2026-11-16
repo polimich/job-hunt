@@ -57,7 +57,7 @@ const tone = (t: Task) =>
       <li
         v-for="t in tasks"
         :key="t.id"
-        :class="cn('group flex items-center gap-3 rounded-xl border bg-card px-3 py-2 shadow-soft transition-opacity', t.doneAt && 'opacity-60')"
+        :class="cn('group flex items-center gap-3 rounded-xl border bg-card px-3 py-2 transition-opacity', t.doneAt && 'opacity-60')"
       >
         <button
           type="button"
@@ -65,8 +65,8 @@ const tone = (t: Task) =>
           :aria-checked="!!t.doneAt"
           :aria-label="t.doneAt ? `Vrátit: ${t.title}` : `Hotovo: ${t.title}`"
           :class="cn(
-            'flex size-5 shrink-0 items-center justify-center rounded-md border-2 transition-all duration-300 ease-(--ease-spring) outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-            t.doneAt ? 'scale-110 border-(--st-interview-dot) bg-(--st-interview-dot) text-white' : 'border-foreground/25 hover:scale-110 hover:border-(--st-interview-dot)',
+            'flex size-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+            t.doneAt ? 'scale-110 border-(--st-interview-dot) bg-(--st-interview-dot) text-white' : 'border-foreground/25 hover:border-(--st-interview-dot)',
           )"
           @click="toggle(t)"
         >

@@ -1,4 +1,6 @@
+import { placeLabel } from '../shared/search';
 import type { Company, Listing, SalaryEstimate } from '../shared/types';
+import { db } from './store';
 
 export const thousands = (n: number) => `${Math.round(n / 1000)}`;
 
@@ -17,7 +19,14 @@ export function formatDateTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('cs-CZ', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-export const PLACE_LABEL: Record<Listing['place'], string> = { brno: 'Brno', remote: 'Remote', praha: 'Praha', jinde: 'Jinde' };
+/** Place names; "local" reads as the search town, so it follows Settings. Getters keep it reactive. */
+export const PLACE_LABEL: Record<Listing['place'], string> = {
+  get local() {
+    return placeLabel('local', db.settings.location);
+  },
+  remote: 'Remote',
+  jinde: 'Jinde',
+};
 
 export const EMAIL_KIND_LABEL = { recruiting: 'náborový', general: 'obecný', person: 'osoba' } as const;
 

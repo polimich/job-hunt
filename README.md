@@ -45,12 +45,14 @@ APIs come first; HTML is read only where a portal offers nothing else.
 
 | Source | How | Key |
 |---|---|---|
-| Úřad práce (MPSV) | Official open data, the whole daily vacancy file (~18 MB), downloaded once a day; software-developer roles (CZ-ISCO 251x) in Brno are kept in `data/cache/`. A vacancy missing from the day's file counts as closed. | no |
+| Úřad práce (MPSV) | Official open data, the whole daily vacancy file (~18 MB), downloaded once a day and slimmed into `data/cache/`; vacancies in the search town that are in a chosen CZ-ISCO group or mention a keyword are kept. A vacancy missing from the day's file counts as closed. | no |
 | StartupJobs | Their JSON API: search, and per-offer detail with description and state. | no |
-| jobs.cz | No API or feed exists; the Brno search page is read. | no |
+| jobs.cz | No API or feed exists; its search page for the town and radius is read. | no |
 | Careerjet | Official partner API, Czech locale. | `CAREERJET_KEY` |
 | Jooble | API; unverified, jooble.org may block it with a Cloudflare check. | `JOOBLE_KEY` |
-| LinkedIn | Public guest endpoints, Brno and remote Czechia. Slow because of rate limits. | no |
+| LinkedIn | Public guest endpoints: the town (with radius and age limit) and remote Czechia. Slow because of rate limits. | no |
+
+What is searched is set in Settings → Hledání: keywords, town (empty = all of Czechia), radius, remote, posting age, title must-contain and exclude words (whole words, diacritics ignored), and the Úřad práce occupation groups. The automatic match score uses your skills and seniority from Settings → Profil.
 
 Keys go into `.env` in the project root (copy `.env.example`; `.env` is not in git), then restart the
 server. Prace.cz, Profesia, Indeed and others were checked and offer no usable API or feed.

@@ -1,5 +1,6 @@
 /** Keyword heuristics applied to postings found on refresh. Hand-made assessments are never overwritten. */
-import type { Listing } from '../shared/types.ts';
+import { fold, hasAny } from '../shared/search.ts';
+import type { Level, Listing } from '../shared/types.ts';
 
 const TAGS: [string, RegExp][] = [
   ['React', /\breact(?:\.?js)?\b/i],
@@ -26,41 +27,52 @@ export function extractTags(text: string): string[] {
   return TAGS.filter(([, re]) => re.test(text)).map(([name]) => name);
 }
 
-export function vueMention(text: string): string {
-  if (!/\bvue(?:\.?js)?\b|\bnuxt\b/i.test(text)) return '';
-  return /\breact\b|\bangular\b|\bsvelte/i.test(text) ? 'zmíněno vedle jiných frameworků' : 'hlavní framework';
+export interface FitProfile {
+  skills: string[];
+  keywords: string[];
+  level: Level;
 }
 
-export function placeOf(location: string, mode: string): Listing['place'] {
-  const where = `${location} ${mode}`.toLowerCase();
-  if (/brno/.test(where)) return 'brno';
-  if (/remote|na dálku|kdekoli/.test(where)) return 'remote';
-  if (/praha|prague/.test(where)) return 'praha';
-  return 'jinde';
+const LEAD = /\b(staff|principal|lead|head|architect|manager|director|vedouc)/i;
+const SENIOR = /\bsenior\b|\bsr\.?\b/i;
+const JUNIOR = /\bjunior\b|\bintern\b|\btrainee\b|\bgraduate\b|\bstáž|\babsolvent/i;
+
+function levelBonus(title: string, level: Level): number {
+  const lead = LEAD.test(title);
+  const senior = !lead && SENIOR.test(title);
+  const junior = JUNIOR.test(title);
+  switch (level) {
+    case 'junior':
+      return lead || senior ? -1 : junior ? 0.3 : 0;
+    case 'medior':
+      return lead ? -1 : senior ? -0.3 : junior ? -0.8 : 0;
+    case 'senior':
+      return junior ? -1 : lead ? -0.5 : senior ? 0.2 : 0;
+    case 'lead':
+      return junior ? -1.2 : lead ? 0.3 : 0;
+    default:
+      return 0;
+  }
 }
 
 /**
- * Rough 1–5 match for a posting nobody has read yet. It rewards the profile's stack
- * (React, TypeScript, Next.js, .NET), Brno or remote work, and penalises other main
- * stacks and titles above senior. It is a sorting aid, not an assessment.
+ * Rough 1–5 match for a posting nobody has read yet: how much of its stack is in my skills,
+ * whether the title has one of my keywords, my seniority, and whether the place suits me.
+ * It is a sorting aid, not an assessment.
  */
-export function autoFit(title: string, text: string, place: Listing['place']): number {
-  const all = `${title}\n${text}`;
-  const tags = new Set(extractTags(all));
-  let score = 2;
-  if (tags.has('React')) score += 1.2;
-  if (tags.has('TypeScript')) score += 0.6;
-  if (tags.has('Next.js')) score += 0.3;
-  if (tags.has('.NET')) score += 0.4;
-  if (tags.has('Vue') && !tags.has('React')) score += 0.6;
-  if (tags.has('MUI')) score += 0.2;
-  if (/front[- ]?end|fullstack|full[- ]stack/i.test(title)) score += 0.4;
-  if (!tags.has('React') && !tags.has('Vue')) score -= 0.8;
-  if (/\bjava\b(?!script)|\bphp\b|\bangular\b|\bpython\b|\bgo\b/i.test(title)) score -= 0.8;
-  if (/\b(staff|principal|lead|head|architect|manager)\b/i.test(title)) score -= 1;
-  else if (/\bsenior\b|\bsr\.?\b/i.test(title)) score -= 0.3;
-  if (/\bjunior\b|\bintern\b|\bstáž/i.test(title)) score -= 0.8;
-  if (place === 'brno' || place === 'remote') score += 0.4;
+export function autoFit(title: string, text: string, place: Listing['place'], p: FitProfile): number {
+  const tags = extractTags(`${title}\n${text}`);
+  const mine = new Set(p.skills.map(fold));
+  let score = 2.2;
+  if (mine.size && tags.length) {
+    const known = tags.filter((t) => mine.has(fold(t))).length;
+    const other = tags.length - known;
+    score += Math.min(2, known * 0.7) - Math.min(1.5, other * 0.5);
+    if (!known) score -= 0.5;
+  }
+  if (hasAny(title, p.keywords)) score += 0.5;
+  score += levelBonus(title, p.level);
   if (place === 'jinde') score -= 1;
+  else score += 0.4;
   return Math.max(1, Math.min(5, Math.round(score)));
 }
