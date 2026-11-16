@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { CalendarCheckIcon, ChartColumnIcon, HandshakeIcon, MessagesSquareIcon, SendIcon } from '@lucide/vue';
-import type { Status } from '../../shared/types';
+import { SOURCE_LABELS, type Status } from '../../shared/types';
 import { statusMeta } from '@/lib/status';
 import { cn } from '@/lib/utils';
 import StatTile from '../components/StatTile.vue';
@@ -35,7 +35,7 @@ onMounted(() => requestAnimationFrame(() => (grown.value = true)));
 const funnelMax = computed(() => Math.max(1, ...stats.value.funnel.map((f) => f.n)));
 const weekMax = computed(() => Math.max(1, ...stats.value.weeks.map((w) => w.n)));
 const weekLabel = (iso: string) => `${Number(iso.slice(8))}. ${Number(iso.slice(5, 7))}.`;
-const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', jobscz: 'jobs.cz', startupjobs: 'StartupJobs', other: 'Jiné / ručně', referral: 'Doporučení' };
+const SOURCE_LABEL: Record<string, string> = SOURCE_LABELS;
 </script>
 
 <template>

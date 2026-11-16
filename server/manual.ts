@@ -1,19 +1,15 @@
 /** Listings added by hand: read what we can from a pasted URL, then build the listing. */
 import type { Company, Listing, ManualInput, Preview, Source } from '../shared/types.ts';
 import { decodeEntities, fetchText } from './http.ts';
-import { detailFor, toListing } from './refresh.ts';
-import { jobsczId } from './sources/jobscz.ts';
-import { linkedinId } from './sources/linkedin.ts';
-import { startupjobsId } from './sources/startupjobs.ts';
+import { toListing } from './refresh.ts';
+import { detailFor, SOURCES } from './sources/index.ts';
 import { slug } from './store.ts';
 
 export function sourceOf(url: string): { source: Source; sourceId: string } {
-  const li = linkedinId(url);
-  if (li) return { source: 'linkedin', sourceId: li };
-  const jc = jobsczId(url);
-  if (jc) return { source: 'jobscz', sourceId: jc };
-  const sj = startupjobsId(url);
-  if (sj) return { source: 'startupjobs', sourceId: sj };
+  for (const s of SOURCES) {
+    const id = s.idFromUrl?.(url);
+    if (id) return { source: s.id, sourceId: id };
+  }
   return { source: 'other', sourceId: slug(url.replace(/^https?:\/\//, '')) || String(Date.now()) };
 }
 

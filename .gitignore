@@ -5,3 +5,4 @@ dist
 data/*.tmp
 .data-history
 data/
+.env

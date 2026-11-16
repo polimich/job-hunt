@@ -1,6 +1,17 @@
 /** Types shared by the server and the Vue app. */
 
-export type Source = 'linkedin' | 'jobscz' | 'startupjobs' | 'other';
+export type Source = 'linkedin' | 'jobscz' | 'startupjobs' | 'mpsv' | 'careerjet' | 'jooble' | 'other';
+
+export const SOURCE_LABELS: Record<Source | 'referral', string> = {
+  linkedin: 'LinkedIn',
+  jobscz: 'jobs.cz',
+  startupjobs: 'StartupJobs',
+  mpsv: 'Úřad práce',
+  careerjet: 'Careerjet',
+  jooble: 'Jooble',
+  other: 'Jiné / ručně',
+  referral: 'Doporučení',
+};
 
 /**
  * Pipeline, in order: new → interested → applied → talking → interview → offer → accepted.
@@ -249,6 +260,8 @@ export interface Settings {
   weeklyGoal: number;
   /** My skills, matched against each posting's stack. */
   skills: string[];
+  /** Which sources search on refresh; missing = on. */
+  sources: Partial<Record<Source, boolean>>;
   /** Follow-up, thank-you and decline e-mails; {company}, {title} and {name} are replaced. */
   templates: Record<TemplateKind, { cs: MailTemplate; en: MailTemplate }>;
 }

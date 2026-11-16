@@ -1,4 +1,5 @@
 /** `pnpm refresh` — run one refresh from the terminal. `pnpm refresh --check-only` skips the search for new postings. */
+import './env.ts';
 import { refreshAndWait } from './refresh.ts';
 import { loadRuns } from './store.ts';
 

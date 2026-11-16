@@ -10,6 +10,8 @@ export interface Candidate {
   location: string;
   salaryPosted?: string;
   mode?: string;
+  /** Full or partial posting text when the search already returns it (APIs, open data). */
+  text?: string;
 }
 
 export interface Detail {

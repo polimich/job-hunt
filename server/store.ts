@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
   followUpDays: 7,
   autoRefresh: true,
   weeklyGoal: 5,
+  sources: {},
   skills: ['React', 'TypeScript', 'JavaScript', 'Vue', 'Next.js', 'Node', 'HTML', 'CSS', 'Tailwind', 'REST', 'Git'],
   templates: {
     followUp: {

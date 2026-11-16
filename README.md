@@ -36,15 +36,30 @@ Other commands:
 
 ## How refresh works
 
-1. Every open listing is fetched again. A posting that is gone is marked closed.
-2. LinkedIn, jobs.cz and StartupJobs are searched with the keywords from Settings, for Brno and remote Czechia.
-3. Titles that look relevant and are not in the list yet are read and added.
+1. Every open listing is re-checked. A posting that is gone is marked closed.
+2. The sources switched on in Settings → Zdroje inzerátů are searched for new postings.
+3. Relevant titles not in the list yet are added (for scraped sources, by reading the posting page).
+
+Sources live in `server/sources/` and are registered in `server/sources/index.ts`. Official data and
+APIs come first; HTML is read only where a portal offers nothing else.
+
+| Source | How | Key |
+|---|---|---|
+| Úřad práce (MPSV) | Official open data, the whole daily vacancy file (~18 MB), downloaded once a day; software-developer roles (CZ-ISCO 251x) in Brno are kept in `data/cache/`. A vacancy missing from the day's file counts as closed. | no |
+| StartupJobs | Their JSON API: search, and per-offer detail with description and state. | no |
+| jobs.cz | No API or feed exists; the Brno search page is read. | no |
+| Careerjet | Official partner API, Czech locale. | `CAREERJET_KEY` |
+| Jooble | API; unverified, jooble.org may block it with a Cloudflare check. | `JOOBLE_KEY` |
+| LinkedIn | Public guest endpoints, Brno and remote Czechia. Slow because of rate limits. | no |
+
+Keys go into `.env` in the project root (copy `.env.example`; `.env` is not in git), then restart the
+server. Prace.cz, Profesia, Indeed and others were checked and offer no usable API or feed.
 
 New listings get a match score from a keyword heuristic (`server/score.ts`), shown with `~`.
 Scores, strengths and weaknesses without `~` were assessed by hand and are never overwritten.
 
 LinkedIn rate-limits its public endpoints, so a refresh takes several minutes. One run reads at most
-40 new postings; the rest arrive on the next run.
+40 new posting pages; postings whose text came with the search (APIs, open data) do not count.
 
 ## Tracking applications
 

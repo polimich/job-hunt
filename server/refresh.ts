@@ -2,12 +2,9 @@
  * Refresh: re-check every open listing, search the boards for new ones, read their text
  * and record what changed. Runs as one background job; progress is polled by the UI.
  */
-import type { Company, Listing, RefreshProgress, RefreshRun } from '../shared/types.ts';
+import { SOURCE_LABELS, type Company, type Listing, type RefreshProgress, type RefreshRun } from '../shared/types.ts';
 import { autoFit, extractTags, placeOf, vueMention } from './score.ts';
-import * as generic from './sources/generic.ts';
-import * as jobscz from './sources/jobscz.ts';
-import * as linkedin from './sources/linkedin.ts';
-import * as startupjobs from './sources/startupjobs.ts';
+import { detailFor, enabledSources } from './sources/index.ts';
 import type { Candidate, Detail } from './sources/types.ts';
 import { addRun, loadCompanies, loadListings, loadSettings, saveCompanies, saveListings, slug } from './store.ts';
 
@@ -27,12 +24,7 @@ function step(label: string, done = progress.done, total = progress.total): void
   progress = { ...progress, step: label, done, total };
 }
 
-export function detailFor(listing: Pick<Listing, 'source' | 'sourceId' | 'url'>): Promise<Detail> {
-  if (listing.source === 'linkedin') return linkedin.detail(listing.sourceId);
-  if (listing.source === 'startupjobs') return startupjobs.detail(listing.url);
-  if (listing.source === 'jobscz') return jobscz.detail(listing.url);
-  return generic.detail(listing.url);
-}
+export { detailFor };
 
 const titleKey = (company: string, title: string) => `${slug(company)}|${slug(title)}`;
 
@@ -114,16 +106,11 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
   // 2. Search the boards.
   step('Hledám nové inzeráty', 0, 0);
   const candidates: Candidate[] = [];
-  const searches: [string, () => Promise<Candidate[]>][] = [
-    ['StartupJobs', () => startupjobs.search((s) => step(s))],
-    ['jobs.cz', () => jobscz.search([...settings.keywords, ...settings.vueKeywords], (s) => step(s))],
-    ['LinkedIn', () => linkedin.search(settings.keywords, settings.vueKeywords, (s) => step(s))],
-  ];
-  for (const [name, search] of searches) {
+  for (const src of enabledSources(settings)) {
     try {
-      candidates.push(...(await search()));
+      candidates.push(...(await src.search!(settings, (s) => step(s))));
     } catch (e) {
-      result.errors.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+      result.errors.push(`${SOURCE_LABELS[src.id]}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -141,16 +128,20 @@ async function run(searchNew: boolean): Promise<RefreshRun> {
     knownTitles.add(key);
     fresh.push(c);
   }
-  if (fresh.length > MAX_NEW_PER_RUN) {
-    result.errors.push(`Nalezeno ${fresh.length} nových inzerátů, načteno prvních ${MAX_NEW_PER_RUN}. Zbytek přibude při dalším obnovení.`);
+  // Postings that came with their text cost nothing more; the cap is for ones that need a page read.
+  const withText = fresh.filter((c) => c.text);
+  const toRead = fresh.filter((c) => !c.text);
+  if (toRead.length > MAX_NEW_PER_RUN) {
+    result.errors.push(`Nalezeno ${toRead.length} nových inzerátů ke čtení, načteno prvních ${MAX_NEW_PER_RUN}. Zbytek přibude při dalším obnovení.`);
   }
 
   // 4. Read the new ones.
-  const batch = fresh.slice(0, MAX_NEW_PER_RUN);
+  const batch = [...withText, ...toRead.slice(0, MAX_NEW_PER_RUN)];
   i = 0;
   for (const c of batch) {
     step(`Čtu nový inzerát: ${c.company}`, i++, batch.length);
-    const d = await detailFor(c);
+    // APIs and open data already return the text; only scraped sources need a detail request.
+    const d = c.text ? { open: true, text: c.text } : await detailFor(c);
     if (d.open === false) continue;
     const listing = toListing(c, d, companies, today);
     listings.push(listing);

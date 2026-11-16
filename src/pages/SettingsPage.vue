@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
-import type { Settings, TemplateKind } from '../../shared/types';
+import { AlarmClockIcon, RadarIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
+import { SOURCE_LABELS, type Settings, type Source, type TemplateKind } from '../../shared/types';
 import PageHeader from '../components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -54,6 +54,21 @@ async function copyCalendar() {
     toast.error('Kopírování se nepovedlo');
   }
 }
+
+interface SourceInfo {
+  id: Source;
+  about: string;
+  on: boolean;
+  needsKey?: { env: string; signup: string; has: boolean };
+}
+const sources = ref<SourceInfo[]>([]);
+onMounted(async () => {
+  try {
+    sources.value = (await (await fetch('/api/sources')).json()) as SourceInfo[];
+  } catch {
+    /* the list just stays empty */
+  }
+});
 
 const backups = ref<string[]>([]);
 const loadBackups = async () => (backups.value = (await (await fetch('/api/backups')).json()) as string[]);
@@ -147,8 +162,37 @@ async function save() {
 
     <Card>
       <CardHeader>
+        <CardTitle class="flex items-center gap-2"><RadarIcon class="size-4 text-muted-foreground" /> Zdroje inzerátů</CardTitle>
+        <CardDescription>Kde se při obnovení hledají nové pozice. Přednost mají oficiální data a API, scrapování jen tam, kde jiná cesta není.</CardDescription>
+      </CardHeader>
+      <CardContent class="flex flex-col divide-y">
+        <label v-for="src in sources" :key="src.id" class="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+          <Checkbox
+            :model-value="!!src.needsKey && !src.needsKey.has ? false : ((form.sources ??= {})[src.id] ?? src.on)"
+            :disabled="!!src.needsKey && !src.needsKey.has"
+            class="mt-0.5"
+            @update:model-value="(v) => ((form.sources ??= {})[src.id] = v === true)"
+          />
+          <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span class="flex flex-wrap items-center gap-2 text-sm font-semibold">
+              {{ SOURCE_LABELS[src.id] }}
+              <span v-if="src.needsKey && src.needsKey.has" class="rounded-full bg-(--st-interview-bg) px-2 text-[11px] font-semibold text-(--st-interview-fg)">klíč nastaven</span>
+              <span v-else-if="src.needsKey" class="rounded-full bg-muted px-2 text-[11px] font-semibold text-muted-foreground">potřebuje klíč</span>
+            </span>
+            <span class="text-xs text-muted-foreground">{{ src.about }}</span>
+            <span v-if="src.needsKey && !src.needsKey.has" class="text-xs text-muted-foreground">
+              Zdarma na <a :href="src.needsKey.signup" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline underline-offset-4">{{ src.needsKey.signup.replace(/^https?:\/\/(www\.)?/, "").split("/")[0] }}</a>,
+              pak <code class="rounded bg-muted px-1 font-mono">{{ src.needsKey.env }}=…</code> do souboru <code class="rounded bg-muted px-1 font-mono">.env</code> a restart serveru.
+            </span>
+          </span>
+        </label>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
         <CardTitle class="flex items-center gap-2"><SearchIcon class="size-4 text-muted-foreground" /> Hledání nových inzerátů</CardTitle>
-        <CardDescription>Každé klíčové slovo přidá dotazy na LinkedIn, které trvají nejdéle. Čtyři až šest slov je rozumné maximum.</CardDescription>
+        <CardDescription>Klíčová slova se hledají na jobs.cz, LinkedIn, Careerjet a Jooble (StartupJobs a Úřad práce berou vše a filtrují se podle názvu). Každé slovo přidá dotazy na LinkedIn, které trvají nejdéle; čtyři až šest slov je rozumné maximum.</CardDescription>
       </CardHeader>
       <CardContent class="flex flex-col gap-4">
         <div class="flex flex-col gap-2">

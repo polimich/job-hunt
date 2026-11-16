@@ -21,6 +21,7 @@ const EMPTY: Db = {
     autoRefresh: true,
     weeklyGoal: 5,
     skills: [],
+    sources: {},
     templates: {
       followUp: { cs: { subject: '', body: '' }, en: { subject: '', body: '' } },
       thankYou: { cs: { subject: '', body: '' }, en: { subject: '', body: '' } },

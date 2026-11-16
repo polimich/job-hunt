@@ -61,7 +61,32 @@ export function startupjobsId(url: string): string | null {
   return /startupjobs\.cz\/(?:nabidka|job)\/(\d+)/.exec(url)?.[1] ?? null;
 }
 
+/**
+ * Posting detail from the JSON API: open while its state is "published". Falls back to the
+ * web page when the API does not answer.
+ */
 export async function detail(url: string): Promise<Detail> {
+  const id = startupjobsId(url);
+  if (id) {
+    const { status, body } = await fetchText(`https://back.startupjobs.cz/api/offers/${id}`, { headers: { Accept: 'application/json' } }, 2);
+    if (status === 404 || status === 410) return { open: false, text: '' };
+    if (status === 200) {
+      try {
+        const o = JSON.parse(body) as { state?: string; description?: Record<string, string> | null; name?: Record<string, string> };
+        if (o.state) {
+          const html = o.description?.cs ?? o.description?.en ?? '';
+          const title = o.name?.cs ?? o.name?.en ?? '';
+          return { open: o.state === 'published', text: htmlToText(`${title ? `<h1>${title}</h1>` : ''}${html}`) };
+        }
+      } catch {
+        /* not JSON: use the page below */
+      }
+    }
+  }
+  return pageDetail(url);
+}
+
+async function pageDetail(url: string): Promise<Detail> {
   const { status, body } = await fetchText(url);
   if (status === 404 || status === 410) return { open: false, text: '' };
   if (status !== 200) return { open: null, text: '' };

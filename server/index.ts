@@ -1,4 +1,5 @@
-/** Local API for the dashboard. Reads and writes the JSON files in data/. */
+/** Local API for the dashboard, over the SQLite database in data/. */
+import './env.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -8,6 +9,7 @@ import { addDays, cleanLabels, emptyOffer, emptyState, followedUp, newEventId, t
 import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
+import { sourceInfo } from './sources/index.ts';
 import { calendar, feed, interviewItem } from './ics.ts';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
@@ -321,6 +323,8 @@ app.get('/api/export.csv', (c) => {
   c.header('Content-Disposition', `attachment; filename="job-hunt-${today()}.csv"`);
   return c.body(toCsv(loadDb()));
 });
+
+app.get('/api/sources', (c) => c.json(sourceInfo(loadSettings())));
 
 app.get('/api/backups', (c) => c.json(listBackups()));
 app.post('/api/backups', (c) => c.json({ file: backup(today(), true) }));
