@@ -5,19 +5,22 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { addDays, cleanLabels, emptyState, followedUp, newEventId, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
-import { STATUSES, type Contact, type Task, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Task, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
+import { calendar, feed, interviewItem } from './ics.ts';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { extname } from 'node:path';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteContact, deleteListing, deleteTask, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
 
 const app = new Hono();
 
 app.get('/api/db', (c) => c.json(loadDb()));
 
 /** Fields of a state that can be set directly; history goes through the event routes. */
-type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string; rating: number; labels: string[]; referredBy: string }>;
+type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string; rating: number; labels: string[]; referredBy: string; docIds: string[] }>;
 
 function updateState(id: string, change: (prev: ListingState, on: string, settings: Settings) => ListingState): ListingState {
   const next = { ...change(getState(id) ?? emptyState(), today(), loadSettings()), updatedAt: new Date().toISOString() };
@@ -42,6 +45,10 @@ app.put('/api/state/:id', async (c) => {
       if (typeof patch.rating === 'number') next = { ...next, rating: Math.min(Math.max(Math.round(patch.rating), 0), 5) };
       if (patch.labels !== undefined) next = { ...next, labels: cleanLabels(patch.labels) };
       if (typeof patch.referredBy === 'string') next = { ...next, referredBy: patch.referredBy.trim().slice(0, 120) };
+      if (Array.isArray(patch.docIds)) {
+        const known = new Set(loadDocs().map((d) => d.id));
+        next = { ...next, docIds: [...new Set(patch.docIds.filter((d) => known.has(d)))] };
+      }
       return next;
     }),
   );
@@ -55,6 +62,7 @@ app.post('/api/state/:id/events', async (c) => {
   const clean: Omit<TrackEvent, 'id'> = { kind: ev.kind, at: ev.at, text: String(ev.text ?? '').slice(0, 4000) };
   if (ev.kind === 'interview' && typeof ev.time === 'string' && /^\d{2}:\d{2}$/.test(ev.time)) clean.time = ev.time;
   if (typeof ev.contactId === 'string' && getContact(ev.contactId)) clean.contactId = ev.contactId;
+  if (ev.kind === 'interview' && INTERVIEW_ROUNDS.some((r) => r.id === ev.round)) clean.round = ev.round;
   return c.json(updateState(c.req.param('id'), (prev, on, settings) => withEvent(prev, clean, on, settings)));
 });
 
@@ -200,6 +208,86 @@ app.patch('/api/tasks/:id', async (c) => {
 app.delete('/api/tasks/:id', (c) => {
   deleteTask(c.req.param('id'));
   return c.json({ ok: true });
+});
+
+// ---------- documents (CV versions…) ----------
+
+const DOCS_DIR = join(DATA_DIR, 'docs');
+const DOC_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+  '.md': 'text/markdown; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+};
+const docPath = (d: Doc) => join(DOCS_DIR, `${d.id}${extname(d.fileName).toLowerCase()}`);
+
+app.post('/api/docs', async (c) => {
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) return c.json({ error: 'file is required' }, 400);
+  const ext = extname(file.name).toLowerCase();
+  if (!DOC_TYPES[ext]) return c.json({ error: 'Povolené jsou PDF, DOC(X), ODT, MD a TXT' }, 400);
+  if (file.size > 10 * 1024 * 1024) return c.json({ error: 'Soubor je větší než 10 MB' }, 400);
+  const kind = ['cv', 'cover', 'other'].includes(String(body.kind)) ? (String(body.kind) as Doc['kind']) : 'cv';
+  const doc: Doc = {
+    id: newEventId(),
+    label: String(body.label ?? '').trim().slice(0, 120) || file.name.replace(/\.[^.]+$/, ''),
+    kind,
+    fileName: file.name.replace(/[\/\\]/g, '_').slice(0, 200),
+    size: file.size,
+    createdAt: new Date().toISOString(),
+  };
+  mkdirSync(DOCS_DIR, { recursive: true });
+  writeFileSync(docPath(doc), Buffer.from(await file.arrayBuffer()));
+  saveDoc(doc);
+  return c.json(doc);
+});
+
+app.get('/api/docs/:id', (c) => {
+  const doc = getDoc(c.req.param('id'));
+  if (!doc) return c.json({ error: 'not found' }, 404);
+  c.header('Content-Type', DOC_TYPES[extname(doc.fileName).toLowerCase()] ?? 'application/octet-stream');
+  c.header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(doc.fileName)}`);
+  return c.body(readFileSync(docPath(doc)));
+});
+
+app.patch('/api/docs/:id', async (c) => {
+  const doc = getDoc(c.req.param('id'));
+  if (!doc) return c.json({ error: 'not found' }, 404);
+  const body = (await c.req.json()) as Partial<Doc>;
+  if (typeof body.label === 'string' && body.label.trim()) doc.label = body.label.trim().slice(0, 120);
+  if (body.kind && ['cv', 'cover', 'other'].includes(body.kind)) doc.kind = body.kind;
+  saveDoc(doc);
+  return c.json(doc);
+});
+
+app.delete('/api/docs/:id', (c) => {
+  const doc = getDoc(c.req.param('id'));
+  if (!doc) return c.json({ ok: true });
+  deleteDoc(doc.id);
+  rmSync(docPath(doc), { force: true });
+  return c.json({ ok: true });
+});
+
+// ---------- calendar ----------
+
+/** Subscribe to this in a calendar app (webcal://localhost:5174/calendar.ics). */
+app.get('/calendar.ics', (c) => {
+  c.header('Content-Type', 'text/calendar; charset=utf-8');
+  return c.body(feed(loadDb()));
+});
+
+/** One interview, to add to a calendar by opening the file. */
+app.get('/api/state/:id/events/:eventId/ics', (c) => {
+  const st = getState(c.req.param('id'));
+  const ev = st?.events.find((e) => e.id === c.req.param('eventId') && e.kind === 'interview');
+  const l = loadListings().find((x) => x.id === c.req.param('id'));
+  if (!ev || !l) return c.json({ error: 'not found' }, 404);
+  c.header('Content-Type', 'text/calendar; charset=utf-8');
+  c.header('Content-Disposition', `attachment; filename="pohovor-${l.companyId}.ics"`);
+  return c.body(calendar([interviewItem(l, ev, ev.contactId ? getContact(ev.contactId)?.name : undefined)]));
 });
 
 /** Everything, as one JSON file (backup / moving to another machine). */

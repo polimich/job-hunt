@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { ENDINGS, emptyState, today, withStatus } from '../shared/pipeline';
 import { celebrate } from './lib/celebrate';
-import { STATUSES, type Company, type Contact, type Db, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
+import { STATUSES, type Company, type Contact, type Db, type Doc, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
 import { applyFilters, DEFAULT_FILTERS, effectiveStatus, type Filters } from './filters';
 import { buildIndex, search } from './search';
 
@@ -12,6 +12,7 @@ const EMPTY: Db = {
   companies: [],
   contacts: [],
   tasks: [],
+  docs: [],
   state: {},
   runs: [],
   settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], vueKeywords: [], excludeTitle: '',
@@ -95,7 +96,7 @@ export const statusCounts = computed(() => {
 
 export const stateOf = (id: string): ListingState => db.state[id] ?? emptyState();
 
-type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote' | 'rating' | 'labels' | 'referredBy'>>;
+type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote' | 'rating' | 'labels' | 'referredBy' | 'docIds'>>;
 
 export async function setState(id: string, patch: StateChange): Promise<void> {
   // Show the change at once; the server answer then replaces it with what was stored.
@@ -282,4 +283,30 @@ export async function updateTask(id: string, patch: { title?: string; due?: stri
 export async function deleteTask(id: string): Promise<void> {
   await api(`/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
   db.tasks = db.tasks.filter((t) => t.id !== id);
+}
+
+// ---------- documents ----------
+
+export async function uploadDoc(file: File, label: string, kind: Doc['kind']): Promise<Doc> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('label', label);
+  form.append('kind', kind);
+  const res = await fetch('/api/docs', { method: 'POST', body: form });
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `${res.status}`);
+  const doc = (await res.json()) as Doc;
+  db.docs.unshift(doc);
+  return doc;
+}
+
+export async function renameDoc(id: string, label: string): Promise<void> {
+  const doc = await api<Doc>(`/docs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ label }) });
+  const i = db.docs.findIndex((d) => d.id === id);
+  if (i >= 0) db.docs[i] = doc;
+}
+
+export async function deleteDoc(id: string): Promise<void> {
+  await api(`/docs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  db.docs = db.docs.filter((d) => d.id !== id);
+  for (const st of Object.values(db.state)) st.docIds = (st.docIds ?? []).filter((d) => d !== id);
 }

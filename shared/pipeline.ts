@@ -38,7 +38,7 @@ export function daysBetween(from: string, to: string): number {
 export const newEventId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export function emptyState(): ListingState {
-  return { status: 'new', note: '', contactedAt: '', nextAt: '', nextNote: '', followUps: 0, rating: 0, labels: [], referredBy: '', events: [], updatedAt: '' };
+  return { status: 'new', note: '', contactedAt: '', nextAt: '', nextNote: '', followUps: 0, rating: 0, labels: [], referredBy: '', docIds: [], events: [], updatedAt: '' };
 }
 
 const LEGACY_STATUS: Record<string, Status> = { contacted: 'applied', rejected: 'passed' };

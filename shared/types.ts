@@ -111,7 +111,31 @@ export interface TrackEvent {
   status?: Status;
   /** Who it was with (messages, interviews). */
   contactId?: string;
+  /** Interviews only: what kind of round. */
+  round?: InterviewRound;
   text: string;
+}
+
+export type InterviewRound = 'hr' | 'tech' | 'homework' | 'team' | 'final' | 'other';
+export const INTERVIEW_ROUNDS: { id: InterviewRound; label: string }[] = [
+  { id: 'hr', label: 'HR / úvodní' },
+  { id: 'tech', label: 'Technické' },
+  { id: 'homework', label: 'Úkol na doma' },
+  { id: 'team', label: 'S týmem' },
+  { id: 'final', label: 'Finální' },
+  { id: 'other', label: 'Jiné' },
+];
+
+/** A file I send with applications: a CV version, a cover letter, a portfolio. */
+export interface Doc {
+  id: string;
+  /** What I call it, e.g. "CV EN – frontend". */
+  label: string;
+  kind: 'cv' | 'cover' | 'other';
+  /** Original file name. */
+  fileName: string;
+  size: number;
+  createdAt: string;
 }
 
 /** A to-do on one application: take-home assignment, send portfolio, prepare questions… */
@@ -162,6 +186,8 @@ export interface ListingState {
   labels: string[];
   /** Who referred me, '' when nobody. Counts as source "referral" in the stats. */
   referredBy: string;
+  /** Documents sent with this application (Doc ids). */
+  docIds: string[];
   events: TrackEvent[];
   updatedAt: string;
 }
@@ -210,6 +236,7 @@ export interface Db {
   companies: Company[];
   contacts: Contact[];
   tasks: Task[];
+  docs: Doc[];
   state: Record<string, ListingState>;
   runs: RefreshRun[];
   settings: Settings;

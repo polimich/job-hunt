@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, MailPlusIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
+import { AlarmClockIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
 import type { Settings, TemplateKind } from '../../shared/types';
 import PageHeader from '../components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { db, saveSettings } from '../store';
+import { db, deleteDoc, saveSettings, uploadDoc } from '../store';
+import type { Doc } from '../../shared/types';
 
 const form = reactive<Settings>(structuredClone(JSON.parse(JSON.stringify(db.settings)) as Settings));
 const TEMPLATE_KINDS: { id: TemplateKind; label: string }[] = [
@@ -19,6 +20,40 @@ const TEMPLATE_KINDS: { id: TemplateKind; label: string }[] = [
   { id: 'thankYou', label: 'Poděkování' },
   { id: 'decline', label: 'Odmítnutí' },
 ];
+
+const docLabel = ref('');
+const docKind = ref<Doc['kind']>('cv');
+const docFile = ref<File | null>(null);
+const uploading = ref(false);
+async function upload() {
+  if (!docFile.value) return;
+  uploading.value = true;
+  try {
+    await uploadDoc(docFile.value, docLabel.value, docKind.value);
+    docLabel.value = '';
+    docFile.value = null;
+    toast.success('Dokument nahrán');
+  } catch (e) {
+    toast.error('Nahrání selhalo', { description: e instanceof Error ? e.message : String(e) });
+  } finally {
+    uploading.value = false;
+  }
+}
+async function removeDoc(id: string, label: string) {
+  if (!confirm(`Smazat ${label}? U přihlášek zmizí i označení.`)) return;
+  await deleteDoc(id).catch((e) => toast.error('Smazání selhalo', { description: String(e) }));
+}
+
+// The API serves the feed on its own port, also while developing on Vite's.
+const calendarUrl = `webcal://${location.hostname}:${location.port === '5173' ? '5174' : location.port || '80'}/calendar.ics`;
+async function copyCalendar() {
+  try {
+    await navigator.clipboard.writeText(calendarUrl);
+    toast.success('Adresa zkopírována');
+  } catch {
+    toast.error('Kopírování se nepovedlo');
+  }
+}
 
 const backups = ref<string[]>([]);
 const loadBackups = async () => (backups.value = (await (await fetch('/api/backups')).json()) as string[]);
@@ -176,6 +211,52 @@ async function save() {
             <span class="text-xs text-muted-foreground">Když běží server, obnoví se sám mezi 7. a 23. hodinou, pokud poslední obnovení je starší než 20 hodin.</span>
           </span>
         </Label>
+      </CardContent>
+    </Card>
+
+    <Card id="dokumenty">
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2"><PaperclipIcon class="size-4 text-muted-foreground" /> Dokumenty</CardTitle>
+        <CardDescription>Verze CV, motivační dopisy, portfolio. U každé přihlášky pak označíš, co jsi poslal(a), a Přehled ukáže, která verze funguje.</CardDescription>
+      </CardHeader>
+      <CardContent class="flex flex-col gap-4">
+        <form class="flex flex-wrap items-end gap-2" @submit.prevent="upload">
+          <div class="flex min-w-48 flex-1 flex-col gap-1.5">
+            <Label for="doc-label">Název</Label>
+            <Input id="doc-label" v-model="docLabel" placeholder="CV EN – frontend" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <Label for="doc-kind">Druh</Label>
+            <select id="doc-kind" v-model="docKind" class="h-8 rounded-lg border border-input bg-transparent px-2 text-sm dark:bg-input/30">
+              <option value="cv">CV</option><option value="cover">Motivační dopis</option><option value="other">Jiné</option>
+            </select>
+          </div>
+          <label class="relative inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 text-sm text-muted-foreground hover:border-foreground/30 hover:text-foreground">
+            <UploadIcon class="size-4" /> {{ docFile ? docFile.name : 'Vybrat soubor' }}
+            <input type="file" accept=".pdf,.doc,.docx,.odt,.md,.txt" class="sr-only" @change="docFile = ($event.target as HTMLInputElement).files?.[0] ?? null" />
+          </label>
+          <Button type="submit" :disabled="!docFile || uploading">Nahrát</Button>
+        </form>
+        <ul v-if="db.docs.length" class="divide-y rounded-xl border">
+          <li v-for="d in db.docs" :key="d.id" class="flex items-center gap-3 px-3 py-2 text-sm">
+            <FileTextIcon class="size-4 shrink-0 text-muted-foreground" />
+            <a :href="`/api/docs/${d.id}`" target="_blank" class="min-w-0 flex-1 truncate font-medium hover:underline underline-offset-4">{{ d.label }}</a>
+            <span class="hidden text-xs text-muted-foreground sm:inline">{{ d.fileName }} · {{ Math.max(1, Math.round(d.size / 1024)) }} kB</span>
+            <Button size="icon-xs" variant="ghost" type="button" :aria-label="`Smazat ${d.label}`" class="hover:text-destructive" @click="removeDoc(d.id, d.label)"><Trash2Icon /></Button>
+          </li>
+        </ul>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2"><CalendarDaysIcon class="size-4 text-muted-foreground" /> Kalendář</CardTitle>
+        <CardDescription>Přihlas si tuhle adresu v kalendáři (Apple Calendar: Soubor → Nový odběr kalendáře). Obsahuje pohovory, další kroky a úkoly. Funguje, když běží server.</CardDescription>
+      </CardHeader>
+      <CardContent class="flex flex-wrap items-center gap-2">
+        <code class="rounded-lg bg-muted px-2.5 py-1.5 font-mono text-xs">{{ calendarUrl }}</code>
+        <Button variant="outline" size="sm" type="button" @click="copyCalendar"><CopyIcon /> Kopírovat</Button>
+        <Button as="a" :href="calendarUrl" variant="ghost" size="sm" type="button"><CalendarPlusIcon /> Otevřít v kalendáři</Button>
       </CardContent>
     </Card>
 

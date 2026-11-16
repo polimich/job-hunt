@@ -32,6 +32,8 @@ export interface Stats {
   funnel: FunnelStep[];
   weeks: Week[];
   bySource: SourceRow[];
+  /** Per document (CV version) sent: how many applications and answers. Keyed by doc id. */
+  byDoc: { docId: string; applied: number; answered: number }[];
 }
 
 export function mondayOf(iso: string): string {
@@ -63,7 +65,18 @@ export function computeStats(listings: Listing[], state: Record<string, ListingS
     sources.set(source, row);
   }
 
+  const docs = new Map<string, { docId: string; applied: number; answered: number }>();
+  for (const { st } of applied) {
+    for (const d of st.docIds ?? []) {
+      const row = docs.get(d) ?? { docId: d, applied: 0, answered: 0 };
+      row.applied++;
+      if (isAnswered(st)) row.answered++;
+      docs.set(d, row);
+    }
+  }
+
   return {
+    byDoc: [...docs.values()].sort((a, b) => b.applied - a.applied),
     applied: applied.length,
     answered: applied.filter((x) => isAnswered(x.st)).length,
     interviews: reached(RANK.interview!).length,

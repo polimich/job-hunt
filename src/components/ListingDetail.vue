@@ -20,6 +20,7 @@ import {
   LaptopIcon,
   MailIcon,
   MapPinIcon,
+  PaperclipIcon,
   SparklesIcon,
   StarIcon,
   ThumbsUpIcon,
@@ -36,6 +37,7 @@ import { Kbd } from '@/components/ui/kbd';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { bestEmail, EMAIL_KIND_LABEL, formatDate, looksCzech, mailto, PLACE_LABEL } from '../format';
 import { highlight } from '../search';
 import { companyById, contactsOf, db, deleteListing, filters, latestAdded, patchListing, setState, statusOf } from '../store';
@@ -70,6 +72,10 @@ async function save(patch: Parameters<typeof setState>[1]): Promise<boolean> {
   }
 }
 const setStatus = (s: Status) => void save({ status: s });
+function toggleDoc(id: string) {
+  const ids = state.value?.docIds ?? [];
+  void save({ docIds: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id] });
+}
 
 const note = ref('');
 const noteSaved = ref(false);
@@ -250,6 +256,23 @@ const meta = computed(() =>
           :model-value="state?.contactedAt ?? ''"
           @change="save({ contactedAt: ($event.target as HTMLInputElement).value })"
         />
+        <p class="mt-3 mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><PaperclipIcon class="size-3.5" /> Odesláno s</p>
+        <div v-if="db.docs.length" class="flex flex-wrap gap-1.5">
+          <button
+            v-for="d in db.docs"
+            :key="d.id"
+            type="button"
+            :aria-pressed="state?.docIds?.includes(d.id) ?? false"
+            :class="cn(
+              'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold transition-all duration-300 ease-(--ease-spring) active:scale-95',
+              state?.docIds?.includes(d.id) ? 'border-(--st-applied-dot)/40 bg-(--st-applied-bg) text-(--st-applied-fg)' : 'text-muted-foreground hover:border-foreground/20 hover:text-foreground',
+            )"
+            @click="toggleDoc(d.id)"
+          >
+            <CheckIcon v-if="state?.docIds?.includes(d.id)" class="size-3 animate-pop" /><FileTextIcon v-else class="size-3" /> {{ d.label }}
+          </button>
+        </div>
+        <RouterLink v-else to="/nastaveni#dokumenty" class="text-xs text-primary hover:underline underline-offset-4">Nahraj CV v Nastavení →</RouterLink>
       </section>
 
       <section class="rounded-2xl border bg-card shadow-soft p-3.5">

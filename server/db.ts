@@ -117,6 +117,19 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX tasks_listing ON tasks(listing_id);
   `,
+  // 4: interview rounds, and documents (CV versions) sent with applications.
+  `
+  ALTER TABLE events ADD COLUMN round TEXT;
+  CREATE TABLE docs (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'cv',
+    file_name TEXT NOT NULL,
+    size INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  ALTER TABLE state ADD COLUMN doc_ids TEXT NOT NULL DEFAULT '[]';
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

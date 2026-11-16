@@ -4,7 +4,7 @@
  */
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { Company, Contact, Db, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import type { Company, Contact, Db, Doc, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
@@ -170,6 +170,7 @@ const toEvent = (r: Row): TrackEvent => ({
   ...(r.time ? { time: r.time as string } : {}),
   ...(r.status ? { status: r.status as TrackEvent['status'] } : {}),
   ...(r.contact_id ? { contactId: r.contact_id as string } : {}),
+  ...(r.round ? { round: r.round as TrackEvent['round'] } : {}),
   text: r.text as string,
 });
 
@@ -183,6 +184,7 @@ const toState = (r: Row, events: TrackEvent[]): ListingState => ({
   rating: Number(r.rating ?? 0),
   labels: json<string[]>(r.labels, []),
   referredBy: (r.referred_by as string) ?? '',
+  docIds: json<string[]>(r.doc_ids, []),
   events,
   updatedAt: r.updated_at as string,
 });
@@ -212,17 +214,17 @@ export function putState(id: string, st: ListingState): void {
 function writeState(id: string, st: ListingState): void {
   db()
     .prepare(
-      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, rating, labels, referred_by, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, rating, labels, referred_by, doc_ids, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(listing_id) DO UPDATE SET status = excluded.status, note = excluded.note, contacted_at = excluded.contacted_at,
          next_at = excluded.next_at, next_note = excluded.next_note, follow_ups = excluded.follow_ups, rating = excluded.rating,
-         labels = excluded.labels, referred_by = excluded.referred_by, updated_at = excluded.updated_at`,
+         labels = excluded.labels, referred_by = excluded.referred_by, doc_ids = excluded.doc_ids, updated_at = excluded.updated_at`,
     )
-    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.rating ?? 0, JSON.stringify(st.labels ?? []), st.referredBy ?? '', st.updatedAt);
+    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.rating ?? 0, JSON.stringify(st.labels ?? []), st.referredBy ?? '', JSON.stringify(st.docIds ?? []), st.updatedAt);
   // Events are append-mostly; rewriting this one application's few rows keeps the order exact.
   db().prepare('DELETE FROM events WHERE listing_id = ?').run(id);
-  const insert = db().prepare('INSERT INTO events (id, listing_id, kind, at, time, status, contact_id, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-  for (const e of st.events) insert.run(e.id, id, e.kind, e.at, e.time ?? null, e.status ?? null, e.contactId ?? null, e.text);
+  const insert = db().prepare('INSERT INTO events (id, listing_id, kind, at, time, status, contact_id, round, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  for (const e of st.events) insert.run(e.id, id, e.kind, e.at, e.time ?? null, e.status ?? null, e.contactId ?? null, e.round ?? null, e.text);
 }
 
 // ---------- contacts ----------
@@ -289,6 +291,41 @@ export function saveTask(t: Task): void {
 }
 export const deleteTask = (id: string): void => void db().prepare('DELETE FROM tasks WHERE id = ?').run(id);
 
+// ---------- documents ----------
+
+const toDoc = (r: Row): Doc => ({
+  id: r.id as string,
+  label: r.label as string,
+  kind: r.kind as Doc['kind'],
+  fileName: r.file_name as string,
+  size: Number(r.size),
+  createdAt: r.created_at as string,
+});
+
+export const loadDocs = (): Doc[] => (db().prepare('SELECT * FROM docs ORDER BY created_at DESC').all() as Row[]).map(toDoc);
+export const getDoc = (id: string): Doc | undefined => {
+  const r = db().prepare('SELECT * FROM docs WHERE id = ?').get(id) as Row | undefined;
+  return r ? toDoc(r) : undefined;
+};
+export function saveDoc(d: Doc): void {
+  db()
+    .prepare(
+      `INSERT INTO docs (id, label, kind, file_name, size, created_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET label = excluded.label, kind = excluded.kind`,
+    )
+    .run(d.id, d.label, d.kind, d.fileName, d.size, d.createdAt);
+}
+/** Remove a document and drop it from every application that listed it. */
+export function deleteDoc(id: string): void {
+  transaction(db(), () => {
+    for (const r of db().prepare("SELECT listing_id, doc_ids FROM state WHERE doc_ids LIKE '%' || ? || '%'").all(id) as Row[]) {
+      const ids = json<string[]>(r.doc_ids, []).filter((x) => x !== id);
+      db().prepare('UPDATE state SET doc_ids = ? WHERE listing_id = ?').run(JSON.stringify(ids), r.listing_id as string);
+    }
+    db().prepare('DELETE FROM docs WHERE id = ?').run(id);
+  });
+}
+
 // ---------- refresh runs ----------
 
 const toRun = (r: Row): RefreshRun => ({
@@ -327,7 +364,7 @@ export function saveSettings(s: Settings): void {
 }
 
 export function loadDb(): Db {
-  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
+  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), docs: loadDocs(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
 }
 
 // ---------- one-time import of the old JSON files ----------

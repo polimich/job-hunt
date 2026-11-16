@@ -100,13 +100,24 @@ describe('tasks', () => {
   });
 });
 
+describe('documents', () => {
+  it('drops a deleted document from applications', () => {
+    store.saveDoc({ id: 'd1', label: 'CV EN', kind: 'cv', fileName: 'cv.pdf', size: 10, createdAt: 'x' });
+    store.putState('a', { ...emptyState(), docIds: ['d1', 'd2'] });
+    expect(store.getState('a')!.docIds).toEqual(['d1', 'd2']);
+    store.deleteDoc('d1');
+    expect(store.loadDocs()).toEqual([]);
+    expect(store.getState('a')!.docIds).toEqual(['d2']);
+  });
+});
+
 describe('CSV export', () => {
   it('quotes and defuses formulas', () => {
     expect(csvCell('a,b')).toBe('"a,b"');
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
   });
   it('writes one row per listing with its status', () => {
-    const csv = toCsv({ listings: [listing()], companies: [], contacts: [], tasks: [], state: { a: { ...emptyState(), status: 'applied' } }, runs: [], settings: store.loadSettings() });
+    const csv = toCsv({ listings: [listing()], companies: [], contacts: [], tasks: [], docs: [], state: { a: { ...emptyState(), status: 'applied' } }, runs: [], settings: store.loadSettings() });
     expect(csv.split('\r\n')[1]).toContain('Co,Frontend,applied');
   });
 });

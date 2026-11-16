@@ -107,6 +107,24 @@ const SOURCE_LABEL: Record<string, string> = { linkedin: 'LinkedIn', jobscz: 'jo
           </tbody>
         </table>
       </section>
+      <!-- By document -->
+      <section v-if="stats.byDoc.length" class="animate-rise rounded-2xl border bg-card p-5 shadow-soft" style="--i: 8">
+        <h2 class="text-lg font-bold">Podle verze CV</h2>
+        <p class="mb-3 text-xs text-muted-foreground">Které dokumenty jsi posílal(a) a kolik firem se pak ozvalo.</p>
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs text-muted-foreground">
+            <tr><th class="py-1.5 font-medium">Dokument</th><th class="py-1.5 text-right font-medium">Odesláno</th><th class="py-1.5 text-right font-medium">Odpověděli</th><th class="py-1.5 text-right font-medium">Míra</th></tr>
+          </thead>
+          <tbody class="divide-y">
+            <tr v-for="r in stats.byDoc" :key="r.docId">
+              <td class="py-2">{{ db.docs.find((d) => d.id === r.docId)?.label ?? 'smazaný dokument' }}</td>
+              <td class="py-2 text-right tabular-nums">{{ r.applied }}</td>
+              <td class="py-2 text-right tabular-nums">{{ r.answered }}</td>
+              <td class="py-2 text-right tabular-nums">{{ pct(r.answered, r.applied) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </template>
   </div>
 </template>

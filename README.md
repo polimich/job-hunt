@@ -70,6 +70,12 @@ many weeks in a row you reached it. The E-mail menu in the detail has intro, fol
 decline templates (CZ/EN, editable in Settings), addressed to a person you added there when one has an
 e-mail.
 
+Interviews can carry their round (HR, technical, take-home…) and each has a "Do kalendáře" .ics link.
+The whole calendar (interviews, next steps, tasks) is a subscribable feed at
+`webcal://localhost:5174/calendar.ics` while the server runs. Upload CV versions and cover letters in
+Settings → Dokumenty (stored in `data/docs/`), tick which ones went with each application, and Přehled
+shows the answer rate per document.
+
 Roles found elsewhere (referral, recruiter, careers page) are added with **Přidat pozici**. Pasting a URL
 tries to fill in title, company and text. Refresh never re-checks or closes these.
 

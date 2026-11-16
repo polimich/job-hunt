@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { CalendarClockIcon, HistoryIcon, MailIcon, PlusIcon, StickyNoteIcon, Trash2Icon } from '@lucide/vue';
-import type { EventKind, TrackEvent } from '../../shared/types';
+import { CalendarClockIcon, CalendarPlusIcon, HistoryIcon, MailIcon, PlusIcon, StickyNoteIcon, Trash2Icon } from '@lucide/vue';
+import { INTERVIEW_ROUNDS, type EventKind, type InterviewRound, type TrackEvent } from '../../shared/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -14,6 +14,8 @@ import StatusBadge from './StatusBadge.vue';
 const props = defineProps<{ id: string; companyId?: string }>();
 const people = computed(() => (props.companyId ? contactsOf(props.companyId) : []));
 const who = ref('');
+const round = ref<InterviewRound | ''>('');
+const roundLabel = (r?: InterviewRound) => INTERVIEW_ROUNDS.find((x) => x.id === r)?.label;
 
 type AddKind = Exclude<EventKind, 'status'>;
 const KINDS: { id: AddKind; label: string; icon: typeof MailIcon; placeholder: string }[] = [
@@ -48,12 +50,14 @@ async function add() {
       at: at.value || todayIso.value,
       time: kind.value === 'interview' ? time.value || undefined : undefined,
       contactId: kind.value !== 'note' && who.value ? who.value : undefined,
+      round: kind.value === 'interview' && round.value ? round.value : undefined,
       text: text.value.trim(),
     });
     if (kind.value === 'interview') toast.success('Pohovor zapsán', { description: 'Připomínka na poděkování je den po pohovoru.' });
     text.value = '';
     time.value = '';
     who.value = '';
+    round.value = '';
     at.value = todayIso.value;
   } catch (e) {
     toast.error('Uložení selhalo', { description: e instanceof Error ? e.message : String(e) });
@@ -84,6 +88,15 @@ async function remove(e: TrackEvent) {
         </ToggleGroup>
         <Input v-model="at" type="date" aria-label="Datum" class="h-8 w-36" />
         <Input v-if="kind === 'interview'" v-model="time" type="time" aria-label="Čas" class="h-8 w-24" />
+        <select
+          v-if="kind === 'interview'"
+          v-model="round"
+          aria-label="Typ kola"
+          class="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+        >
+          <option value="">Typ kola…</option>
+          <option v-for="r in INTERVIEW_ROUNDS" :key="r.id" :value="r.id">{{ r.label }}</option>
+        </select>
         <select
           v-if="people.length && kind !== 'note'"
           v-model="who"
@@ -118,8 +131,13 @@ async function remove(e: TrackEvent) {
           </div>
           <p v-if="e.kind === 'status' && e.status" class="flex items-center gap-1.5 text-sm">Stav <StatusBadge :status="e.status" /></p>
           <p v-else class="text-sm [overflow-wrap:anywhere]">
-            <span v-if="e.kind === 'interview'" class="font-medium">Pohovor<template v-if="e.text">: </template></span>{{ e.text }}
+            <span v-if="e.kind === 'interview'" class="font-medium">Pohovor<template v-if="e.round"> · {{ roundLabel(e.round) }}</template><template v-if="e.text">: </template></span>{{ e.text }}
           </p>
+          <a
+            v-if="e.kind === 'interview'"
+            :href="`/api/state/${encodeURIComponent(id)}/events/${encodeURIComponent(e.id)}/ics`"
+            class="mt-0.5 inline-flex w-fit items-center gap-1 text-xs font-medium text-primary hover:underline underline-offset-4"
+          ><CalendarPlusIcon class="size-3.5" /> Do kalendáře</a>
         </div>
         <Button
           variant="ghost"
