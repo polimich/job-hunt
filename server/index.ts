@@ -4,9 +4,9 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono, type Context } from 'hono';
-import { addDays, cleanLabels, emptyOffer, emptyState, followedUp, newEventId, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
-import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type Level, type MailDraft, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { Hono } from 'hono';
+import { addDays, cleanLabels, emptyOffer, emptyState, ENDINGS, followedUp, newEventId, normalizeState, RANK, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
+import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type EmailTemplateKind, type Level, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { placeOf } from '../shared/search.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
@@ -16,9 +16,6 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { guard } from './guard.ts';
-import * as gmail from './mail/gmail.ts';
-import * as mail from './mail/service.ts';
-import { messageCounts, messagesOf, publicMessage, unlinkListing, wipeMail } from './mail/store.ts';
 import { getProgress, startRefresh } from './refresh.ts';
 import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
 
@@ -108,6 +105,35 @@ app.post('/api/state/:id/followup', async (c) => {
   return c.json({ error: 'unknown action' }, 400);
 });
 
+/**
+ * I opened an e-mail from the app in my mail program: log it. An intro is the application,
+ * a follow-up counts as one, anything else is a message in the history.
+ */
+app.post('/api/state/:id/emailed', async (c) => {
+  const { kind, subject, docIds } = (await c.req.json()) as { kind?: EmailTemplateKind; subject?: string; docIds?: string[] };
+  const text = `📤 ${String(subject ?? '').trim().slice(0, 300) || 'E-mail'}`;
+  const docs = (Array.isArray(docIds) ? docIds : []).map(String).filter((id) => getDoc(id));
+  return c.json(
+    updateState(c.req.param('id'), (prev, on, settings) => {
+      let st = prev;
+      if (kind === 'followUp') {
+        st = followedUp(st, on, settings);
+        st.events[st.events.length - 1] = { ...st.events.at(-1)!, text: text.replace('📤 ', '📤 Připomenutí: ') };
+      } else {
+        st = withEvent(st, { kind: 'message', at: on, text }, on, settings);
+        if (kind === 'intro' && (RANK[st.status] ?? 0) < (RANK.applied ?? 0) && !ENDINGS.includes(st.status)) st = withStatus(st, 'applied', on, settings);
+      }
+      return { ...st, docIds: [...new Set([...st.docIds, ...docs])] };
+    }),
+  );
+});
+
+/** Undo: put back a state the app had a moment ago (after logging an e-mail by mistake). */
+app.put('/api/state/:id/restore', async (c) => {
+  const prev = normalizeState((await c.req.json()) as ListingState);
+  return c.json(updateState(c.req.param('id'), () => prev));
+});
+
 /** Read title, company and text from a pasted posting URL, to prefill the add form. */
 app.post('/api/listings/preview', async (c) => {
   const { url } = (await c.req.json()) as { url?: string };
@@ -136,7 +162,6 @@ app.delete('/api/listings/:id', (c) => {
   if (!listing) return c.json({ error: 'not found' }, 404);
   if (!listing.manual) return c.json({ error: 'only listings added by hand can be deleted' }, 400);
   deleteListing(id);
-  unlinkListing(id);
   // Drop the company too if this listing created it and nothing else uses it.
   const company = loadCompanies().find((x) => x.id === listing.companyId);
   if (company && !company.salary && !company.emails.length && !listings.some((l) => l.id !== id && l.companyId === company.id)) {
@@ -339,116 +364,6 @@ app.get('/api/sources', (c) => c.json(sourceInfo(loadSettings())));
 app.get('/api/backups', (c) => c.json(listBackups()));
 app.post('/api/backups', (c) => c.json({ file: backup(today(), true) }));
 
-// ---------- e-mail (Gmail) ----------
-
-const failed = (c: Context, e: unknown, status: 400 | 502 = 400) => c.json({ error: e instanceof Error ? e.message : String(e) }, status);
-
-app.get('/api/mail/status', (c) => c.json(mail.status()));
-
-/** Start the Google sign-in; Google comes back to /api/mail/callback. */
-app.get('/api/mail/connect', (c) => {
-  if (!gmail.isConfigured()) return c.text('Chybí GOOGLE_CLIENT_ID a GOOGLE_CLIENT_SECRET v .env', 400);
-  const ref = c.req.header('referer') ?? '';
-  const back = /^http:\/\/(localhost|127\.0\.0\.1):\d+\//.test(ref) ? ref.replace(/[?#].*$/, '') : `http://localhost:${port}/nastaveni`;
-  return c.redirect(gmail.authUrl(port, back));
-});
-
-app.get('/api/mail/callback', async (c) => {
-  const { code, state, error } = c.req.query();
-  if (error || !code || !state) return c.text(`Google: ${error ?? 'chybí kód'}`, 400);
-  try {
-    const back = await gmail.finishAuth(port, code, state);
-    await mail.connected();
-    return c.redirect(`${back}?gmail=ok`);
-  } catch (e) {
-    return c.text(`Připojení Gmailu selhalo: ${e instanceof Error ? e.message : String(e)}`, 400);
-  }
-});
-
-app.post('/api/mail/disconnect', async (c) => {
-  await mail.disconnect();
-  return c.json(mail.status());
-});
-
-/** Forget every fetched e-mail (Gmail stays connected unless disconnected too). */
-app.delete('/api/mail/data', (c) => {
-  wipeMail();
-  return c.json(mail.status());
-});
-
-app.post('/api/mail/sync', async (c) => {
-  try {
-    return c.json({ ...(await mail.sync()), status: mail.status() });
-  } catch (e) {
-    return failed(c, e, 502);
-  }
-});
-
-app.post('/api/mail/send', async (c) => {
-  if (!gmail.isConnected()) return c.json({ error: 'Gmail není připojený' }, 400);
-  const d = (await c.req.json()) as MailDraft;
-  const draft: MailDraft = {
-    listingId: String(d.listingId ?? ''),
-    to: String(d.to ?? '').slice(0, 200),
-    subject: String(d.subject ?? '').slice(0, 300),
-    body: String(d.body ?? '').slice(0, 20_000),
-    docIds: Array.isArray(d.docIds) ? d.docIds.map(String).slice(0, 5) : [],
-    kind: ['intro', 'followUp', 'thankYou', 'decline', 'other'].includes(d.kind) ? d.kind : 'other',
-    replyTo: typeof d.replyTo === 'string' ? d.replyTo : undefined,
-  };
-  try {
-    return c.json(await mail.send(draft));
-  } catch (e) {
-    return failed(c, e, 502);
-  }
-});
-
-app.get('/api/mail/listing/:id', (c) => c.json(messagesOf(c.req.param('id')).map(publicMessage)));
-app.get('/api/mail/counts', (c) => c.json(messageCounts()));
-app.get('/api/mail/triage', (c) => c.json(mail.triage()));
-
-app.post('/api/mail/suggestions/:id/accept', (c) => {
-  try {
-    return c.json(mail.acceptSuggestion(c.req.param('id')));
-  } catch (e) {
-    return failed(c, e);
-  }
-});
-app.post('/api/mail/suggestions/:id/dismiss', (c) => {
-  mail.dismissSuggestion(c.req.param('id'));
-  return c.json({ ok: true });
-});
-
-app.post('/api/mail/messages/:id/assign', async (c) => {
-  const { listingId } = (await c.req.json()) as { listingId?: string };
-  try {
-    mail.assign(c.req.param('id'), String(listingId ?? ''));
-    return c.json({ ok: true });
-  } catch (e) {
-    return failed(c, e);
-  }
-});
-app.post('/api/mail/messages/:id/ignore', async (c) => {
-  const { sender } = (await c.req.json().catch(() => ({}))) as { sender?: boolean };
-  try {
-    mail.ignore(c.req.param('id'), !!sender);
-    return c.json({ ok: true });
-  } catch (e) {
-    return failed(c, e);
-  }
-});
-
-app.get('/api/mail/messages/:id/attachments/:att', async (c) => {
-  try {
-    const a = await mail.attachmentData(c.req.param('id'), c.req.param('att'));
-    c.header('Content-Type', a.mime);
-    c.header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(a.fileName)}`);
-    return c.body(new Uint8Array(a.data));
-  } catch (e) {
-    return failed(c, e, 502);
-  }
-});
-
 app.post('/api/refresh', (c) => c.json({ started: startRefresh(), progress: getProgress() }));
 app.get('/api/refresh', (c) => c.json(getProgress()));
 
@@ -462,7 +377,4 @@ if (existsSync(dist)) {
 serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, () => {
   console.log(`job-hunt API on http://localhost:${port}`);
   startDailyJobs();
-  // Job mail every five minutes while the app runs.
-  setInterval(() => void mail.sync().catch(() => {}), 5 * 60_000);
-  setTimeout(() => void mail.sync().catch(() => {}), 15_000);
 });

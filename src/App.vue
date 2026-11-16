@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
-import { toast } from 'vue-sonner';
+import { computed, onMounted } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import {
   BriefcaseBusinessIcon,
@@ -37,40 +36,14 @@ import { cn } from '@/lib/utils';
 import AddListingDialog from './components/AddListingDialog.vue';
 import { addOpen, db, due, dueTasks, filters, offers, load, loaded, loadError, progress, resumeRefresh, startRefresh, statusCounts } from './store';
 import { formatDateTime } from './format';
-import { loadMailStatus, loadTriage, mailStatus } from './mail';
-
-const route = useRoute();
-const router = useRouter();
 
 onMounted(async () => {
   await load();
   await resumeRefresh();
 });
 
-// Mail: status and triage at start, then every 5 minutes. The server syncs on its own; when its
-// lastSyncAt moves, history and statuses may have changed too, so the whole state is reloaded.
-const refreshMail = () => loadMailStatus().then(loadTriage);
-onMounted(() => void refreshMail().catch(() => undefined));
-const mailPoll = setInterval(() => {
-  const before = mailStatus.value.lastSyncAt;
-  void refreshMail()
-    .then(() => (mailStatus.value.lastSyncAt !== before ? load() : undefined))
-    .catch(() => undefined);
-}, 5 * 60_000);
-onBeforeUnmount(() => clearInterval(mailPoll));
-
-// Google sends me back here with ?gmail=ok after connecting.
-watch(
-  () => route.query.gmail,
-  (v) => {
-    if (v !== 'ok') return;
-    toast.success('Gmail připojen', { description: 'Načítám poštu za poslední měsíc…' });
-    const { gmail: _g, ...query } = route.query;
-    void router.replace({ query });
-    void refreshMail().catch(() => undefined);
-  },
-  { immediate: true },
-);
+const route = useRoute();
+const router = useRouter();
 
 const lastRun = computed(() => db.runs[0]);
 const openCount = computed(() => db.listings.filter((l) => l.open).length);

@@ -6,6 +6,7 @@ import {
   BellRingIcon,
   ChevronDownIcon,
   HeartIcon,
+  InboxIcon,
   LanguagesIcon,
   SendIcon,
   Building2Icon,
@@ -26,7 +27,7 @@ import {
   TriangleAlertIcon,
   WalletIcon,
 } from '@lucide/vue';
-import type { Listing, MailDraft, MailMessage, Status } from '../../shared/types';
+import type { EmailTemplateKind, Listing, Status } from '../../shared/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -52,8 +53,7 @@ import SalaryRange from './SalaryRange.vue';
 import StatusButtons from './StatusButtons.vue';
 import Timeline from './Timeline.vue';
 import ComposeDialog from './ComposeDialog.vue';
-import MailThread from './MailThread.vue';
-import { mailCounts, mailStatus } from '../mail';
+import PasteMailDialog from './PasteMailDialog.vue';
 
 const props = defineProps<{ listing: Listing }>();
 
@@ -108,22 +108,20 @@ const recipient = computed(() => {
 const lang = ref<'cs' | 'en'>('cs');
 watch(czech, (v) => (lang.value = v ? 'cs' : 'en'), { immediate: true });
 
-const MAILS: { kind: MailDraft['kind']; label: string; icon: Component }[] = [
+const MAILS: { kind: EmailTemplateKind; label: string; icon: Component }[] = [
   { kind: 'intro', label: 'Úvodní e-mail', icon: SendIcon },
   { kind: 'followUp', label: 'Připomenutí', icon: BellRingIcon },
   { kind: 'thankYou', label: 'Poděkování po pohovoru', icon: HeartIcon },
   { kind: 'decline', label: 'Odmítnutí nabídky', icon: HandIcon },
 ];
-// One compose dialog serves the E-mail menu, replies from the thread and the `e` shortcut in the list.
+// One compose dialog serves the E-mail menu and the `e` shortcut in the list.
 const composeOpen = ref(false);
-const composeKind = ref<MailDraft['kind']>('intro');
-const replyTo = ref<MailMessage>();
-const mailVersion = ref(0);
-function compose(kind: MailDraft['kind'], reply?: MailMessage) {
+const composeKind = ref<EmailTemplateKind>('intro');
+function compose(kind: EmailTemplateKind) {
   composeKind.value = kind;
-  replyTo.value = reply;
   composeOpen.value = true;
 }
+const pasteOpen = ref(false);
 defineExpose({ compose });
 
 const router = useRouter();
@@ -202,6 +200,7 @@ const meta = computed(() =>
               <component :is="m.icon" /> {{ m.label }}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem @select="pasteOpen = true"><InboxIcon /> Vložit přijatý e-mail…</DropdownMenuItem>
             <DropdownMenuItem @select.prevent="lang = lang === 'cs' ? 'en' : 'cs'">
               <LanguagesIcon /> Jazyk: {{ lang === 'cs' ? 'česky' : 'anglicky' }} <span class="ml-auto text-xs text-muted-foreground">přepnout</span>
             </DropdownMenuItem>
@@ -235,7 +234,6 @@ const meta = computed(() =>
             <a :href="`mailto:${e.address}`" class="truncate font-medium text-primary hover:underline underline-offset-4">{{ e.address }}</a>
             <span class="text-xs text-muted-foreground">{{ EMAIL_KIND_LABEL[e.kind] }}<template v-if="e.note"> · {{ e.note }}</template></span>
           </p>
-          <p v-if="!mailStatus.connected" class="mt-1 text-[11px] text-muted-foreground">Životopis přilož ručně.</p>
         </template>
         <p v-else class="text-sm text-muted-foreground">Jen formulář u inzerátu.</p>
       </section>
@@ -318,8 +316,6 @@ const meta = computed(() =>
       <Textarea :id="`note-${listing.id}`" v-model="note" rows="2" placeholder="Vlastní poznámka… (ukládá se při opuštění pole)" class="min-h-16 bg-card" @blur="saveNote" />
     </section>
 
-    <MailThread v-if="tracked || mailCounts[listing.id]" :listing-id="listing.id" :refresh="mailVersion" @reply="(m) => compose('other', m)" />
-
     <Timeline v-if="tracked" :id="listing.id" :company-id="listing.companyId" />
 
     <!-- Assessment -->
@@ -384,6 +380,7 @@ const meta = computed(() =>
         <Trash2Icon /> Smazat
       </Button>
     </footer>
-    <ComposeDialog v-model:open="composeOpen" :listing="listing" :kind="composeKind" :lang="lang" :reply-to="replyTo" @sent="mailVersion++" />
+    <ComposeDialog v-model:open="composeOpen" :listing="listing" :kind="composeKind" :lang="lang" />
+    <PasteMailDialog v-model:open="pasteOpen" :listing="listing" />
   </article>
 </template>

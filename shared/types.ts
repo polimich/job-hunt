@@ -317,74 +317,8 @@ export interface ManualInput {
 
 // ---------- e-mail ----------
 
-/** What an e-mail is, as far as the job hunt is concerned. */
-export type MailClass = 'sent' | 'receipt' | 'rejection' | 'invite' | 'offer' | 'assignment' | 'reply' | 'notification';
+/** What a received e-mail is, as far as the job hunt is concerned. */
+export type MailClass = 'receipt' | 'rejection' | 'invite' | 'offer' | 'assignment' | 'reply';
 
-export interface MailAttachment {
-  fileName: string;
-  mime: string;
-  size: number;
-  /** Gmail's id; the bytes are fetched only when opened. */
-  attachmentId: string;
-}
-
-export interface MailMessage {
-  /** Gmail message id. */
-  id: string;
-  threadId: string;
-  listingId: string | null;
-  companyId: string | null;
-  direction: 'in' | 'out';
-  from: string;
-  fromName: string;
-  to: string[];
-  subject: string;
-  snippet: string;
-  body: string;
-  /** ISO timestamp. */
-  sentAt: string;
-  cls: MailClass;
-  attachments: MailAttachment[];
-  hasInvite: boolean;
-  /** Why it was linked to the listing, e.g. "vlákno", "kontakt", "doména firmy". */
-  matchReason: string;
-}
-
-/** A status change an e-mail suggests; never applied without a click. */
-export interface MailSuggestion {
-  id: string;
-  messageId: string;
-  listingId: string;
-  status: Status;
-  state: 'pending' | 'accepted' | 'dismissed';
-  createdAt: string;
-}
-
-export interface MailStatus {
-  /** GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are in .env. */
-  configured: boolean;
-  connected: boolean;
-  email: string;
-  lastSyncAt: string;
-  syncing: boolean;
-  error: string;
-}
-
-export interface MailTriage {
-  suggestions: (MailSuggestion & { message: MailMessage })[];
-  /** Fetched job mail that could not be tied to a listing. */
-  unmatched: MailMessage[];
-}
-
-/** What the compose dialog sends. */
-export interface MailDraft {
-  listingId: string;
-  to: string;
-  subject: string;
-  body: string;
-  docIds: string[];
-  /** Which template it started from; decides what is logged. */
-  kind: 'intro' | 'followUp' | 'thankYou' | 'decline' | 'other';
-  /** Gmail id of the message this replies to. */
-  replyTo?: string;
-}
+/** Which template an e-mail started from; decides what is logged when it is opened. */
+export type EmailTemplateKind = 'intro' | 'followUp' | 'thankYou' | 'decline' | 'other';

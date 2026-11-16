@@ -32,7 +32,6 @@ import { ENDINGS } from '../../shared/pipeline';
 import { cn } from '@/lib/utils';
 import { DEFAULT_FILTERS, type Filters } from '../filters';
 import { PLACE_LABEL } from '../format';
-import { mailCounts } from '../mail';
 import { allLabels, allTags, companyById, db, filters, latestAdded, setState, statusCounts, statusOf, visible } from '../store';
 import { selectedId } from '../selection';
 import { toast } from 'vue-sonner';
@@ -355,7 +354,6 @@ const SHORTCUTS: [string[], string][] = [
                 <span>{{ PLACE_LABEL[l.place] }}</span>
                 <span class="text-border">•</span>
                 <SalaryRange :company="companyById.get(l.companyId)" :posted="l.salaryPosted" class="text-xs" />
-                <span v-if="mailCounts[l.id]" class="inline-flex items-center gap-0.5 tabular-nums" :title="`${mailCounts[l.id]} e-mailů`"><MailIcon class="size-3" />{{ mailCounts[l.id] }}</span>
                 <RatingStars v-if="db.state[l.id]?.rating" :model-value="db.state[l.id]!.rating" readonly size="sm" />
                 <span v-for="t in db.state[l.id]?.labels ?? []" :key="t" class="rounded-full bg-(--st-talking-bg) px-1.5 text-[10px] font-semibold text-(--st-talking-fg)">{{ t }}</span>
               </span>

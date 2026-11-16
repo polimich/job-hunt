@@ -172,7 +172,7 @@ const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   `,
   // 6: a general search profile instead of one person's Brno/Vue setup.
   searchProfile,
-  // 7: e-mail from Gmail, linked to applications. Kept out of loadDb() and the exports.
+  // 7: e-mail from Gmail (removed in 8; kept so the version numbers stay in order).
   `
   CREATE TABLE mail_threads (
     id TEXT PRIMARY KEY,
@@ -216,6 +216,13 @@ const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
     created_at TEXT NOT NULL
   );
   CREATE TABLE mail_sync (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `,
+  // 8: Gmail integration removed again (too much setup for a personal tool).
+  `
+  DROP TABLE IF EXISTS messages;
+  DROP TABLE IF EXISTS mail_threads;
+  DROP TABLE IF EXISTS suggestions;
+  DROP TABLE IF EXISTS mail_sync;
   `,
 ];
 
