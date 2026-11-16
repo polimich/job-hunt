@@ -60,6 +60,10 @@ live in `shared/pipeline.ts`:
 - Writing down an interview in the history moves the role to Pohovor and plans a thank-you the day after.
 - After two follow-ups without an answer, the app offers to mark the role Bez odpovědi.
 
+Per application you can also rate how much you want it (1–5 stars, sortable and filterable), add your
+own labels, note who referred you (counts as source "Doporučení" in the stats), and keep the people at
+the company (recruiter, hiring manager…) whom history entries can name.
+
 Roles found elsewhere (referral, recruiter, careers page) are added with **Přidat pozici**. Pasting a URL
 tries to fill in title, company and text. Refresh never re-checks or closes these.
 

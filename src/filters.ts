@@ -14,7 +14,11 @@ export interface Filters {
   /** Estimated top of the salary range must reach this many CZK; 0 = off. */
   minSalary: number;
   size: '' | 'velká' | 'střední' | 'malá';
-  sort: 'fit' | 'salary' | 'newest' | 'company' | 'relevance';
+  /** My labels; a listing must have all of them. */
+  labels: string[];
+  /** My rating must be at least this; 0 = off. */
+  minRating: number;
+  sort: 'fit' | 'rating' | 'salary' | 'newest' | 'company' | 'relevance';
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -29,6 +33,8 @@ export const DEFAULT_FILTERS: Filters = {
   onlyNew: false,
   minSalary: 0,
   size: '',
+  labels: [],
+  minRating: 0,
   sort: 'fit',
 };
 
@@ -62,6 +68,9 @@ export function applyFilters(listings: Listing[], f: Filters, ctx: Context): Lis
     if (f.onlyNew && !ctx.latestAdded.has(l.id)) return false;
     if (f.minSalary && (company?.salary?.max ?? 0) < f.minSalary) return false;
     if (f.size && company?.size !== f.size) return false;
+    const own = ctx.state[l.id];
+    if (f.labels?.length && !f.labels.every((x) => own?.labels?.includes(x))) return false;
+    if (f.minRating && (own?.rating ?? 0) < f.minRating) return false;
     return true;
   });
   const salaryTop = (l: Listing) => ctx.companies.get(l.companyId)?.salary?.max ?? 0;
@@ -69,6 +78,7 @@ export function applyFilters(listings: Listing[], f: Filters, ctx: Context): Lis
   const sort = f.sort === 'relevance' && !ctx.hits ? 'fit' : f.sort;
   return out.sort((a, b) => {
     if (sort === 'relevance') return (ctx.hits!.get(b.id) ?? 0) - (ctx.hits!.get(a.id) ?? 0);
+    if (sort === 'rating') return (ctx.state[b.id]?.rating ?? 0) - (ctx.state[a.id]?.rating ?? 0) || byFit(a, b);
     if (sort === 'salary') return salaryTop(b) - salaryTop(a) || byFit(a, b);
     if (sort === 'newest') return b.firstSeen.localeCompare(a.firstSeen) || byFit(a, b);
     if (sort === 'company') return a.company.localeCompare(b.company, 'cs') || byFit(a, b);

@@ -14,6 +14,7 @@ import {
 import { type Listing, type Status } from '../../shared/types';
 import CompanyAvatar from '../components/CompanyAvatar.vue';
 import FilterChip from '../components/FilterChip.vue';
+import RatingStars from '../components/RatingStars.vue';
 import FitBadge from '../components/FitBadge.vue';
 import ListingDetail from '../components/ListingDetail.vue';
 import SalaryRange from '../components/SalaryRange.vue';
@@ -30,7 +31,7 @@ import { ENDINGS } from '../../shared/pipeline';
 import { cn } from '@/lib/utils';
 import { DEFAULT_FILTERS, type Filters } from '../filters';
 import { bestEmail, looksCzech, mailto, PLACE_LABEL } from '../format';
-import { allTags, companyById, db, filters, latestAdded, setState, statusCounts, statusOf, visible } from '../store';
+import { allLabels, allTags, companyById, db, filters, latestAdded, setState, statusCounts, statusOf, visible } from '../store';
 import { selectedId } from '../selection';
 import { toast } from 'vue-sonner';
 
@@ -53,7 +54,9 @@ function reset() {
   Object.assign(filters, structuredClone(DEFAULT_FILTERS));
 }
 const activeExtra = computed(
-  () => filters.tags.length + Number(filters.onlyVue) + Number(filters.onlyEmail) + Number(filters.onlyNew) + Number(!!filters.minSalary) + Number(!!filters.size),
+  () =>
+    filters.tags.length + (filters.labels?.length ?? 0) + Number(!!filters.minRating) + Number(filters.onlyVue) + Number(filters.onlyEmail) +
+    Number(filters.onlyNew) + Number(!!filters.minSalary) + Number(!!filters.size),
 );
 const isDefault = computed(() => {
   const { query: _q, sort: _s, ...rest } = filters;
@@ -68,6 +71,7 @@ watch(() => filters.query, (q, old) => {
 
 const SORTS: { value: Filters['sort']; label: string }[] = [
   { value: 'fit', label: 'Shoda' },
+  { value: 'rating', label: 'Jak moc chci' },
   { value: 'salary', label: 'Mzda' },
   { value: 'newest', label: 'Nejnovější' },
   { value: 'company', label: 'Firma' },
@@ -277,6 +281,16 @@ const SHORTCUTS: [string[], string][] = [
               </Select>
             </div>
             <div class="flex flex-col gap-2">
+              <p class="text-xs font-medium text-muted-foreground">Jak moc chci, alespoň</p>
+              <RatingStars :model-value="filters.minRating ?? 0" @update:model-value="(v) => (filters.minRating = v)" />
+            </div>
+            <div v-if="allLabels.length" class="flex flex-col gap-2">
+              <p class="text-xs font-medium text-muted-foreground">Moje štítky</p>
+              <div class="flex flex-wrap gap-1.5">
+                <FilterChip v-for="t in allLabels" :key="t" :on="filters.labels?.includes(t) ?? false" @toggle="toggle((filters.labels ??= []), t)">{{ t }}</FilterChip>
+              </div>
+            </div>
+            <div class="flex flex-col gap-2">
               <p class="text-xs font-medium text-muted-foreground">Technologie</p>
               <div class="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto scrollbar-thin">
                 <FilterChip v-for="t in allTags" :key="t" :on="filters.tags.includes(t)" @toggle="toggle(filters.tags, t)">{{ t }}</FilterChip>
@@ -347,6 +361,8 @@ const SHORTCUTS: [string[], string][] = [
                 <SalaryRange :company="companyById.get(l.companyId)" :posted="l.salaryPosted" class="text-xs" />
                 <MailIcon v-if="companyById.get(l.companyId)?.emails.length" class="size-3" aria-label="má e-mail" />
                 <span v-if="l.vue" class="rounded bg-success-soft px-1 text-[10px] font-medium text-success">Vue</span>
+                <RatingStars v-if="db.state[l.id]?.rating" :model-value="db.state[l.id]!.rating" readonly size="sm" />
+                <span v-for="t in db.state[l.id]?.labels ?? []" :key="t" class="rounded-full bg-(--st-talking-bg) px-1.5 text-[10px] font-semibold text-(--st-talking-fg)">{{ t }}</span>
               </span>
             </span>
           </button>

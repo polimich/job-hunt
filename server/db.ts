@@ -86,6 +86,25 @@ const MIGRATIONS: string[] = [
     value TEXT NOT NULL                  -- JSON
   );
   `,
+  // 2: people, and my own rating / labels / referral per application.
+  `
+  CREATE TABLE contacts (
+    id TEXT PRIMARY KEY,
+    company_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    phone TEXT NOT NULL DEFAULT '',
+    linkedin TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX contacts_company ON contacts(company_id);
+  ALTER TABLE state ADD COLUMN rating INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE state ADD COLUMN labels TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE state ADD COLUMN referred_by TEXT NOT NULL DEFAULT '';
+  ALTER TABLE events ADD COLUMN contact_id TEXT;
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

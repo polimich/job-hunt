@@ -109,7 +109,22 @@ export interface TrackEvent {
   time?: string;
   /** For kind 'status': the status moved to. */
   status?: Status;
+  /** Who it was with (messages, interviews). */
+  contactId?: string;
   text: string;
+}
+
+/** A person at a company: recruiter, hiring manager, referrer… */
+export interface Contact {
+  id: string;
+  companyId: string;
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  note: string;
+  createdAt: string;
 }
 
 export interface ListingState {
@@ -123,6 +138,12 @@ export interface ListingState {
   nextNote: string;
   /** Follow-ups sent since the last answer from them. */
   followUps: number;
+  /** How much I want this one, 1–5; 0 = not rated. */
+  rating: number;
+  /** My own labels, e.g. "remote", "startup", "dream". */
+  labels: string[];
+  /** Who referred me, '' when nobody. Counts as source "referral" in the stats. */
+  referredBy: string;
   events: TrackEvent[];
   updatedAt: string;
 }
@@ -165,6 +186,7 @@ export interface Settings {
 export interface Db {
   listings: Listing[];
   companies: Company[];
+  contacts: Contact[];
   state: Record<string, ListingState>;
   runs: RefreshRun[];
   settings: Settings;

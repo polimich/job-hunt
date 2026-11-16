@@ -3,13 +3,14 @@ import { computed, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { ENDINGS, emptyState, today, withStatus } from '../shared/pipeline';
 import { celebrate } from './lib/celebrate';
-import { STATUSES, type Company, type Db, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
+import { STATUSES, type Company, type Contact, type Db, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
 import { applyFilters, DEFAULT_FILTERS, effectiveStatus, type Filters } from './filters';
 import { buildIndex, search } from './search';
 
 const EMPTY: Db = {
   listings: [],
   companies: [],
+  contacts: [],
   state: {},
   runs: [],
   settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], vueKeywords: [], excludeTitle: '', minSalary: 100000, followUpDays: 7, autoRefresh: true },
@@ -83,7 +84,7 @@ export const statusCounts = computed(() => {
 
 export const stateOf = (id: string): ListingState => db.state[id] ?? emptyState();
 
-type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote'>>;
+type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote' | 'rating' | 'labels' | 'referredBy'>>;
 
 export async function setState(id: string, patch: StateChange): Promise<void> {
   // Show the change at once; the server answer then replaces it with what was stored.
@@ -212,3 +213,34 @@ export const upcomingInterviews = computed<UpcomingInterview[]>(() =>
     )
     .sort((a, b) => `${a.event.at} ${a.event.time ?? ''}`.localeCompare(`${b.event.at} ${b.event.time ?? ''}`)),
 );
+
+// ---------- people ----------
+
+export const contactsOf = (companyId: string) => db.contacts.filter((c) => c.companyId === companyId);
+export const contactById = computed(() => new Map(db.contacts.map((c) => [c.id, c])));
+
+export type ContactInput = Partial<Omit<Contact, 'id' | 'createdAt'>>;
+
+export async function saveContact(input: ContactInput & { id?: string }): Promise<Contact> {
+  const { id, ...body } = input;
+  const saved = id
+    ? await api<Contact>(`/contacts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) })
+    : await api<Contact>('/contacts', { method: 'POST', body: JSON.stringify(body) });
+  const i = db.contacts.findIndex((c) => c.id === saved.id);
+  if (i >= 0) db.contacts[i] = saved;
+  else db.contacts.push(saved);
+  return saved;
+}
+
+export async function deleteContact(id: string): Promise<void> {
+  await api(`/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  db.contacts = db.contacts.filter((c) => c.id !== id);
+  for (const st of Object.values(db.state)) for (const e of st.events) if (e.contactId === id) delete e.contactId;
+}
+
+/** Every label in use, most used first. */
+export const allLabels = computed(() => {
+  const count = new Map<string, number>();
+  for (const st of Object.values(db.state)) for (const l of st.labels ?? []) count.set(l, (count.get(l) ?? 0) + 1);
+  return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([l]) => l);
+});

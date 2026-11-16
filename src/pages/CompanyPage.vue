@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { ArrowLeftIcon, Building2Icon, ExternalLinkIcon, MailIcon, NotebookPenIcon, TriangleAlertIcon, WalletIcon } from '@lucide/vue';
 import CompanyAvatar from '../components/CompanyAvatar.vue';
+import ContactsCard from '../components/ContactsCard.vue';
 import FitBadge from '../components/FitBadge.vue';
 import SalaryRange from '../components/SalaryRange.vue';
 import StatusBadge from '../components/StatusBadge.vue';
@@ -60,6 +61,8 @@ const notes = computed(() => roles.value.filter((l) => db.state[l.id]?.note));
           <p v-else class="text-sm text-muted-foreground">Veřejný e-mail nenalezen. Firma bere přihlášky formulářem u inzerátu; oslovit jde recruitera na LinkedInu.</p>
         </section>
       </div>
+
+      <ContactsCard :company-id="company.id" :company-name="company.name" />
 
       <section class="flex flex-col gap-3">
         <h2 class="text-sm font-semibold">Pozice <span class="font-normal text-muted-foreground">{{ roles.length }}</span></h2>

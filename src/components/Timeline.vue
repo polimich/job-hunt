@@ -8,10 +8,12 @@ import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { shortDate } from '../format';
-import { addEvent, removeEvent, stateOf, todayIso } from '../store';
+import { addEvent, contactById, contactsOf, removeEvent, stateOf, todayIso } from '../store';
 import StatusBadge from './StatusBadge.vue';
 
-const props = defineProps<{ id: string }>();
+const props = defineProps<{ id: string; companyId?: string }>();
+const people = computed(() => (props.companyId ? contactsOf(props.companyId) : []));
+const who = ref('');
 
 type AddKind = Exclude<EventKind, 'status'>;
 const KINDS: { id: AddKind; label: string; icon: typeof MailIcon; placeholder: string }[] = [
@@ -41,10 +43,17 @@ async function add() {
   if (!text.value.trim() && kind.value !== 'interview') return;
   busy.value = true;
   try {
-    await addEvent(props.id, { kind: kind.value, at: at.value || todayIso.value, time: kind.value === 'interview' ? time.value || undefined : undefined, text: text.value.trim() });
+    await addEvent(props.id, {
+      kind: kind.value,
+      at: at.value || todayIso.value,
+      time: kind.value === 'interview' ? time.value || undefined : undefined,
+      contactId: kind.value !== 'note' && who.value ? who.value : undefined,
+      text: text.value.trim(),
+    });
     if (kind.value === 'interview') toast.success('Pohovor zapsán', { description: 'Připomínka na poděkování je den po pohovoru.' });
     text.value = '';
     time.value = '';
+    who.value = '';
     at.value = todayIso.value;
   } catch (e) {
     toast.error('Uložení selhalo', { description: e instanceof Error ? e.message : String(e) });
@@ -75,6 +84,15 @@ async function remove(e: TrackEvent) {
         </ToggleGroup>
         <Input v-model="at" type="date" aria-label="Datum" class="h-8 w-36" />
         <Input v-if="kind === 'interview'" v-model="time" type="time" aria-label="Čas" class="h-8 w-24" />
+        <select
+          v-if="people.length && kind !== 'note'"
+          v-model="who"
+          aria-label="S kým"
+          class="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+        >
+          <option value="">S kým…</option>
+          <option v-for="c in people" :key="c.id" :value="c.id">{{ c.name }}{{ c.role ? ` (${c.role})` : '' }}</option>
+        </select>
       </div>
       <div class="flex gap-2">
         <Input v-model="text" :placeholder="placeholder" aria-label="Text záznamu" class="h-8 flex-1" />
@@ -96,6 +114,7 @@ async function remove(e: TrackEvent) {
           <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span class="tabular-nums">{{ shortDate(e.at) }}<template v-if="e.time"> · {{ e.time }}</template></span>
             <span v-if="upcoming(e)" class="font-medium text-success">nadcházející</span>
+            <span v-if="e.contactId && contactById.get(e.contactId)">· s {{ contactById.get(e.contactId)!.name }}</span>
           </div>
           <p v-if="e.kind === 'status' && e.status" class="flex items-center gap-1.5 text-sm">Stav <StatusBadge :status="e.status" /></p>
           <p v-else class="text-sm [overflow-wrap:anywhere]">

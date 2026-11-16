@@ -7,6 +7,7 @@ import {
   Building2Icon,
   CalendarIcon,
   HandIcon,
+  HeartHandshakeIcon,
   Trash2Icon,
   CheckIcon,
   ExternalLinkIcon,
@@ -31,8 +32,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { bestEmail, EMAIL_KIND_LABEL, formatDate, looksCzech, mailto, PLACE_LABEL } from '../format';
 import { highlight } from '../search';
-import { companyById, db, deleteListing, filters, latestAdded, patchListing, setState, statusOf } from '../store';
+import { companyById, contactsOf, db, deleteListing, filters, latestAdded, patchListing, setState, statusOf } from '../store';
 import CompanyAvatar from './CompanyAvatar.vue';
+import ContactsCard from './ContactsCard.vue';
+import LabelsEditor from './LabelsEditor.vue';
+import RatingStars from './RatingStars.vue';
 import FitBadge from './FitBadge.vue';
 import NextStep from './NextStep.vue';
 import SalaryRange from './SalaryRange.vue';
@@ -134,6 +138,10 @@ const meta = computed(() =>
             <component :is="m.icon" class="size-3.5" />{{ m.text }}
           </li>
         </ul>
+        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <RatingStars :model-value="state?.rating ?? 0" @update:model-value="(v) => save({ rating: v })" />
+          <LabelsEditor :model-value="state?.labels ?? []" @update:model-value="(v) => save({ labels: v })" />
+        </div>
       </div>
     </header>
 
@@ -217,6 +225,25 @@ const meta = computed(() =>
       </section>
     </div>
 
+    <!-- People -->
+    <div class="flex flex-col gap-3">
+      <ContactsCard :company-id="listing.companyId" :company-name="listing.company" />
+      <div class="flex max-w-md flex-col gap-1.5">
+        <Label :for="`ref-${listing.id}`" class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><HeartHandshakeIcon class="size-3.5" /> Doporučil(a) mě</Label>
+        <Input
+          :id="`ref-${listing.id}`"
+          :model-value="state?.referredBy ?? ''"
+          :list="`ref-list-${listing.id}`"
+          placeholder="Jméno, pokud jde o doporučení"
+          class="h-8"
+          @change="save({ referredBy: ($event.target as HTMLInputElement).value })"
+        />
+        <datalist :id="`ref-list-${listing.id}`">
+          <option v-for="c in contactsOf(listing.companyId)" :key="c.id" :value="c.name" />
+        </datalist>
+      </div>
+    </div>
+
     <!-- Note -->
     <section class="flex flex-col gap-2">
       <div class="flex items-center justify-between">
@@ -228,7 +255,7 @@ const meta = computed(() =>
       <Textarea :id="`note-${listing.id}`" v-model="note" rows="2" placeholder="Vlastní poznámka… (ukládá se při opuštění pole)" class="min-h-16 bg-card" @blur="saveNote" />
     </section>
 
-    <Timeline :id="listing.id" />
+    <Timeline :id="listing.id" :company-id="listing.companyId" />
 
     <!-- Assessment -->
     <div v-if="listing.strengths || listing.weaknesses" class="grid gap-3 md:grid-cols-2">

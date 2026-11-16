@@ -4,20 +4,20 @@ import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
-import { addDays, emptyState, followedUp, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
-import { STATUSES, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { addDays, cleanLabels, emptyState, followedUp, newEventId, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
+import { STATUSES, type Contact, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteListing, getState, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteListing, getContact, getState, saveContact, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
 
 const app = new Hono();
 
 app.get('/api/db', (c) => c.json(loadDb()));
 
 /** Fields of a state that can be set directly; history goes through the event routes. */
-type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string }>;
+type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string; rating: number; labels: string[]; referredBy: string }>;
 
 function updateState(id: string, change: (prev: ListingState, on: string, settings: Settings) => ListingState): ListingState {
   const next = { ...change(getState(id) ?? emptyState(), today(), loadSettings()), updatedAt: new Date().toISOString() };
@@ -39,6 +39,9 @@ app.put('/api/state/:id', async (c) => {
       if (typeof patch.contactedAt === 'string') next = { ...next, contactedAt: patch.contactedAt };
       if (typeof patch.nextAt === 'string') next = { ...next, nextAt: patch.nextAt, nextNote: patch.nextAt ? (patch.nextNote ?? next.nextNote) : '' };
       else if (typeof patch.nextNote === 'string') next = { ...next, nextNote: patch.nextNote };
+      if (typeof patch.rating === 'number') next = { ...next, rating: Math.min(Math.max(Math.round(patch.rating), 0), 5) };
+      if (patch.labels !== undefined) next = { ...next, labels: cleanLabels(patch.labels) };
+      if (typeof patch.referredBy === 'string') next = { ...next, referredBy: patch.referredBy.trim().slice(0, 120) };
       return next;
     }),
   );
@@ -51,6 +54,7 @@ app.post('/api/state/:id/events', async (c) => {
   if (!isDate(ev.at) || !ev.at) return c.json({ error: 'bad date' }, 400);
   const clean: Omit<TrackEvent, 'id'> = { kind: ev.kind, at: ev.at, text: String(ev.text ?? '').slice(0, 4000) };
   if (ev.kind === 'interview' && typeof ev.time === 'string' && /^\d{2}:\d{2}$/.test(ev.time)) clean.time = ev.time;
+  if (typeof ev.contactId === 'string' && getContact(ev.contactId)) clean.contactId = ev.contactId;
   return c.json(updateState(c.req.param('id'), (prev, on, settings) => withEvent(prev, clean, on, settings)));
 });
 
@@ -130,6 +134,38 @@ app.put('/api/settings', async (c) => {
   next.autoRefresh = next.autoRefresh !== false;
   saveSettings(next);
   return c.json(next);
+});
+
+const CONTACT_FIELDS = ['name', 'role', 'email', 'phone', 'linkedin', 'note'] as const;
+
+function contactFrom(input: Partial<Contact>, prev?: Contact): Contact | string {
+  const c: Contact = prev ? { ...prev } : { id: newEventId(), companyId: '', name: '', role: '', email: '', phone: '', linkedin: '', note: '', createdAt: new Date().toISOString() };
+  for (const f of CONTACT_FIELDS) if (typeof input[f] === 'string') c[f] = input[f].trim().slice(0, f === 'note' ? 2000 : 200);
+  if (typeof input.companyId === 'string') c.companyId = input.companyId;
+  if (!c.name) return 'name is required';
+  if (!loadCompanies().some((x) => x.id === c.companyId)) return 'unknown company';
+  return c;
+}
+
+app.post('/api/contacts', async (c) => {
+  const next = contactFrom((await c.req.json()) as Partial<Contact>);
+  if (typeof next === 'string') return c.json({ error: next }, 400);
+  saveContact(next);
+  return c.json(next);
+});
+
+app.patch('/api/contacts/:id', async (c) => {
+  const prev = getContact(c.req.param('id'));
+  if (!prev) return c.json({ error: 'not found' }, 404);
+  const next = contactFrom((await c.req.json()) as Partial<Contact>, prev);
+  if (typeof next === 'string') return c.json({ error: next }, 400);
+  saveContact(next);
+  return c.json(next);
+});
+
+app.delete('/api/contacts/:id', (c) => {
+  deleteContact(c.req.param('id'));
+  return c.json({ ok: true });
 });
 
 /** Everything, as one JSON file (backup / moving to another machine). */

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import CompanyAvatar from '../components/CompanyAvatar.vue';
 import FitBadge from '../components/FitBadge.vue';
 import PageHeader from '../components/PageHeader.vue';
+import RatingStars from '../components/RatingStars.vue';
 import { dueLabel, shortDate } from '../format';
 import { db, setState, statusOf, todayIso } from '../store';
 
@@ -121,6 +122,11 @@ async function onDrop(status: Status) {
                 <FitBadge :fit="l.fit" :auto="l.fitSource === 'auto'" size="sm" />
               </div>
               <p class="line-clamp-2 text-sm leading-snug font-semibold">{{ l.title }}</p>
+              <div v-if="db.state[l.id]?.rating || db.state[l.id]?.labels?.length || db.state[l.id]?.referredBy" class="flex flex-wrap items-center gap-1.5">
+                <RatingStars v-if="db.state[l.id]?.rating" :model-value="db.state[l.id]!.rating" readonly size="sm" />
+                <span v-if="db.state[l.id]?.referredBy" class="rounded-full bg-(--st-offer-bg) px-1.5 text-[10px] font-semibold text-(--st-offer-fg)">doporučení</span>
+                <span v-for="t in db.state[l.id]?.labels ?? []" :key="t" class="rounded-full bg-(--st-talking-bg) px-1.5 text-[10px] font-semibold text-(--st-talking-fg)">{{ t }}</span>
+              </div>
               <p v-if="nextInterview(l.id)" class="flex items-center gap-1.5 text-xs font-medium text-success">
                 <CalendarClockIcon class="size-3.5" /> {{ shortDate(nextInterview(l.id)!.at) }}{{ nextInterview(l.id)!.time ? ` · ${nextInterview(l.id)!.time}` : '' }}
               </p>

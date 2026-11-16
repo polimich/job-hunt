@@ -14,7 +14,7 @@ export interface Week {
 }
 
 export interface SourceRow {
-  source: Source;
+  source: Source | 'referral';
   applied: number;
   answered: number;
 }
@@ -53,12 +53,14 @@ export function computeStats(listings: Listing[], state: Record<string, ListingS
     if (w) w.n++;
   }
 
-  const sources = new Map<Source, SourceRow>();
+  const sources = new Map<Source | 'referral', SourceRow>();
   for (const { l, st } of applied) {
-    const row = sources.get(l.source) ?? { source: l.source, applied: 0, answered: 0 };
+    // A referral counts as its own channel, wherever the posting itself was found.
+    const source: Source | 'referral' = st.referredBy ? 'referral' : l.source;
+    const row = sources.get(source) ?? { source, applied: 0, answered: 0 };
     row.applied++;
     if (isAnswered(st)) row.answered++;
-    sources.set(l.source, row);
+    sources.set(source, row);
   }
 
   return {

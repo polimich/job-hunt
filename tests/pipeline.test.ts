@@ -81,6 +81,11 @@ describe('computeStats', () => {
     expect(stats.weeks).toEqual([{ start: '2026-11-09', n: 1 }, { start: '2026-11-16', n: 2 }]);
     expect(stats.bySource[0]).toEqual({ source: 'linkedin', applied: 2, answered: 1 });
   });
+  it('counts referrals as their own source', () => {
+    const a = { ...withStatus(emptyState(), 'applied', DAY, S), referredBy: 'Petr' };
+    const stats = computeStats([listing('a', 'linkedin')], { a }, DAY, 1);
+    expect(stats.bySource).toEqual([{ source: 'referral', applied: 1, answered: 0 }]);
+  });
   it('finds Monday', () => {
     expect(mondayOf('2026-11-22')).toBe('2026-11-16');
     expect(mondayOf('2026-11-16')).toBe('2026-11-16');

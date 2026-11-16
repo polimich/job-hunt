@@ -4,7 +4,7 @@
  */
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { Company, Db, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import type { Company, Contact, Db, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
@@ -135,6 +135,7 @@ const toEvent = (r: Row): TrackEvent => ({
   at: r.at as string,
   ...(r.time ? { time: r.time as string } : {}),
   ...(r.status ? { status: r.status as TrackEvent['status'] } : {}),
+  ...(r.contact_id ? { contactId: r.contact_id as string } : {}),
   text: r.text as string,
 });
 
@@ -145,6 +146,9 @@ const toState = (r: Row, events: TrackEvent[]): ListingState => ({
   nextAt: r.next_at as string,
   nextNote: r.next_note as string,
   followUps: Number(r.follow_ups),
+  rating: Number(r.rating ?? 0),
+  labels: json<string[]>(r.labels, []),
+  referredBy: (r.referred_by as string) ?? '',
   events,
   updatedAt: r.updated_at as string,
 });
@@ -174,15 +178,55 @@ export function putState(id: string, st: ListingState): void {
 function writeState(id: string, st: ListingState): void {
   db()
     .prepare(
-      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, rating, labels, referred_by, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(listing_id) DO UPDATE SET status = excluded.status, note = excluded.note, contacted_at = excluded.contacted_at,
-         next_at = excluded.next_at, next_note = excluded.next_note, follow_ups = excluded.follow_ups, updated_at = excluded.updated_at`,
+         next_at = excluded.next_at, next_note = excluded.next_note, follow_ups = excluded.follow_ups, rating = excluded.rating,
+         labels = excluded.labels, referred_by = excluded.referred_by, updated_at = excluded.updated_at`,
     )
-    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.updatedAt);
+    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.rating ?? 0, JSON.stringify(st.labels ?? []), st.referredBy ?? '', st.updatedAt);
   // Events are append-mostly; rewriting this one application's few rows keeps the order exact.
   db().prepare('DELETE FROM events WHERE listing_id = ?').run(id);
-  const insert = db().prepare('INSERT INTO events (id, listing_id, kind, at, time, status, text) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  for (const e of st.events) insert.run(e.id, id, e.kind, e.at, e.time ?? null, e.status ?? null, e.text);
+  const insert = db().prepare('INSERT INTO events (id, listing_id, kind, at, time, status, contact_id, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  for (const e of st.events) insert.run(e.id, id, e.kind, e.at, e.time ?? null, e.status ?? null, e.contactId ?? null, e.text);
+}
+
+// ---------- contacts ----------
+
+const toContact = (r: Row): Contact => ({
+  id: r.id as string,
+  companyId: r.company_id as string,
+  name: r.name as string,
+  role: r.role as string,
+  email: r.email as string,
+  phone: r.phone as string,
+  linkedin: r.linkedin as string,
+  note: r.note as string,
+  createdAt: r.created_at as string,
+});
+
+export const loadContacts = (): Contact[] => (db().prepare('SELECT * FROM contacts ORDER BY name COLLATE NOCASE').all() as Row[]).map(toContact);
+export const getContact = (id: string): Contact | undefined => {
+  const r = db().prepare('SELECT * FROM contacts WHERE id = ?').get(id) as Row | undefined;
+  return r ? toContact(r) : undefined;
+};
+
+export function saveContact(c: Contact): void {
+  db()
+    .prepare(
+      `INSERT INTO contacts (id, company_id, name, role, email, phone, linkedin, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET company_id = excluded.company_id, name = excluded.name, role = excluded.role, email = excluded.email,
+         phone = excluded.phone, linkedin = excluded.linkedin, note = excluded.note`,
+    )
+    .run(c.id, c.companyId, c.name, c.role, c.email, c.phone, c.linkedin, c.note, c.createdAt);
+}
+
+/** Remove a person; history entries that named them keep their text but lose the link. */
+export function deleteContact(id: string): void {
+  transaction(db(), () => {
+    db().prepare('UPDATE events SET contact_id = NULL WHERE contact_id = ?').run(id);
+    db().prepare('DELETE FROM contacts WHERE id = ?').run(id);
+  });
 }
 
 // ---------- refresh runs ----------
@@ -221,7 +265,7 @@ export function saveSettings(s: Settings): void {
 }
 
 export function loadDb(): Db {
-  return { listings: loadListings(), companies: loadCompanies(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
+  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
 }
 
 // ---------- one-time import of the old JSON files ----------

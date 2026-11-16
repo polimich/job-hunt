@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { emptyState, withEvent, withStatus } from '../shared/pipeline';
+import { cleanLabels, emptyState, withEvent, withStatus } from '../shared/pipeline';
 import type { Listing } from '../shared/types';
 import { openDb } from '../server/db';
 import { csvCell, toCsv } from '../server/export';
@@ -65,13 +65,31 @@ describe('SQLite store', () => {
   });
 });
 
+describe('people, rating, labels', () => {
+  it('stores contacts and unlinks history when one is deleted', () => {
+    store.saveContact({ id: 'p1', companyId: 'co', name: 'Jana', role: 'HR', email: '', phone: '', linkedin: '', note: '', createdAt: 'x' });
+    let st = withStatus(emptyState(), 'applied', '2026-11-16', S);
+    st = withEvent(st, { kind: 'message', at: '2026-11-17', contactId: 'p1', text: 'odpověděla' }, '2026-11-17', S);
+    store.putState('a', { ...st, rating: 4, labels: ['remote'], referredBy: 'Petr' });
+    expect(store.getState('a')).toMatchObject({ rating: 4, labels: ['remote'], referredBy: 'Petr' });
+    expect(store.getState('a')!.events.at(-1)!.contactId).toBe('p1');
+    store.deleteContact('p1');
+    expect(store.loadContacts()).toEqual([]);
+    expect(store.getState('a')!.events.at(-1)!.contactId).toBeUndefined();
+  });
+  it('cleans labels', () => {
+    expect(cleanLabels([' Remote ', 'remote', '', 'Startup', 42])).toEqual(['remote', 'startup', '42']);
+    expect(cleanLabels('x')).toEqual([]);
+  });
+});
+
 describe('CSV export', () => {
   it('quotes and defuses formulas', () => {
     expect(csvCell('a,b')).toBe('"a,b"');
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
   });
   it('writes one row per listing with its status', () => {
-    const csv = toCsv({ listings: [listing()], companies: [], state: { a: { ...emptyState(), status: 'applied' } }, runs: [], settings: store.loadSettings() });
+    const csv = toCsv({ listings: [listing()], companies: [], contacts: [], state: { a: { ...emptyState(), status: 'applied' } }, runs: [], settings: store.loadSettings() });
     expect(csv.split('\r\n')[1]).toContain('Co,Frontend,applied');
   });
 });

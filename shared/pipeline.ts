@@ -38,7 +38,7 @@ export function daysBetween(from: string, to: string): number {
 export const newEventId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export function emptyState(): ListingState {
-  return { status: 'new', note: '', contactedAt: '', nextAt: '', nextNote: '', followUps: 0, events: [], updatedAt: '' };
+  return { status: 'new', note: '', contactedAt: '', nextAt: '', nextNote: '', followUps: 0, rating: 0, labels: [], referredBy: '', events: [], updatedAt: '' };
 }
 
 const LEGACY_STATUS: Record<string, Status> = { contacted: 'applied', rejected: 'passed' };
@@ -116,4 +116,15 @@ export function furthestRank(st: ListingState): number {
   if (st.contactedAt) best = Math.max(best, RANK.applied ?? 0);
   if (st.events.some((e) => e.kind === 'interview')) best = Math.max(best, RANK.interview ?? 0);
   return best;
+}
+
+/** Clean user labels: trimmed, lower-case, unique, at most 12 of up to 24 characters. */
+export function cleanLabels(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const v of raw) {
+    const l = String(v).trim().toLowerCase().slice(0, 24);
+    if (l && !out.includes(l)) out.push(l);
+  }
+  return out.slice(0, 12);
 }
