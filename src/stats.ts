@@ -82,3 +82,21 @@ export function computeStats(listings: Listing[], state: Record<string, ListingS
     bySource: [...sources.values()].sort((a, b) => b.applied - a.applied),
   };
 }
+
+export interface Goal {
+  /** Sent so far this week. */
+  thisWeek: number;
+  goal: number;
+  /** Weeks in a row that reached the goal, counting this week once it is reached. */
+  streak: number;
+}
+
+export function weeklyGoal(state: Record<string, ListingState>, today: string, goal: number): Goal {
+  const perWeek = new Map<string, number>();
+  for (const st of Object.values(state)) if (st.contactedAt) perWeek.set(mondayOf(st.contactedAt), (perWeek.get(mondayOf(st.contactedAt)) ?? 0) + 1);
+  const monday = mondayOf(today);
+  const thisWeek = perWeek.get(monday) ?? 0;
+  let streak = thisWeek >= goal ? 1 : 0;
+  for (let w = addDays(monday, -7); (perWeek.get(w) ?? 0) >= goal; w = addDays(w, -7)) streak++;
+  return { thisWeek, goal, streak };
+}

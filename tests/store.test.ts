@@ -83,13 +83,30 @@ describe('people, rating, labels', () => {
   });
 });
 
+describe('tasks', () => {
+  it('stores, updates and removes tasks with their listing', () => {
+    store.saveListings([listing()]);
+    store.saveTask({ id: 't1', listingId: 'a', title: 'Úkol na doma', due: '2026-11-20', doneAt: '', createdAt: 'x' });
+    store.saveTask({ ...store.getTask('t1')!, doneAt: '2026-11-18T10:00:00Z' });
+    expect(store.loadTasks()[0]).toMatchObject({ title: 'Úkol na doma', doneAt: '2026-11-18T10:00:00Z' });
+    store.deleteListing('a');
+    expect(store.loadTasks()).toEqual([]);
+  });
+  it('fills in template defaults for older settings', () => {
+    store.saveSettings({ ...store.loadSettings(), templates: { followUp: { cs: { subject: 'X', body: '' }, en: { subject: '', body: '' } } } as never });
+    const t = store.loadSettings().templates;
+    expect(t.followUp.cs.subject).toBe('X');
+    expect(t.thankYou.cs.body).toContain('{title}');
+  });
+});
+
 describe('CSV export', () => {
   it('quotes and defuses formulas', () => {
     expect(csvCell('a,b')).toBe('"a,b"');
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
   });
   it('writes one row per listing with its status', () => {
-    const csv = toCsv({ listings: [listing()], companies: [], contacts: [], state: { a: { ...emptyState(), status: 'applied' } }, runs: [], settings: store.loadSettings() });
+    const csv = toCsv({ listings: [listing()], companies: [], contacts: [], tasks: [], state: { a: { ...emptyState(), status: 'applied' } }, runs: [], settings: store.loadSettings() });
     expect(csv.split('\r\n')[1]).toContain('Co,Frontend,applied');
   });
 });

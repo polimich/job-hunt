@@ -64,6 +64,12 @@ Per application you can also rate how much you want it (1–5 stars, sortable an
 own labels, note who referred you (counts as source "Doporučení" in the stats), and keep the people at
 the company (recruiter, hiring manager…) whom history entries can name.
 
+Each application can have tasks (take-home with a deadline, send portfolio…); tasks due today show on
+Dnes next to follow-ups. Settings has a weekly goal for sent applications; Dnes shows progress and how
+many weeks in a row you reached it. The E-mail menu in the detail has intro, follow-up, thank-you and
+decline templates (CZ/EN, editable in Settings), addressed to a person you added there when one has an
+e-mail.
+
 Roles found elsewhere (referral, recruiter, careers page) are added with **Přidat pozici**. Pasting a URL
 tries to fill in title, company and text. Refresh never re-checks or closes these.
 

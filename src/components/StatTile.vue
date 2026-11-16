@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import CountUp from './CountUp.vue';
 
 /** A pastel tile with a big number. Coloured like the pipeline stage it is about. */
-defineProps<{ label: string; value: number | string; icon: Component; color: Status; hint?: string; clickable?: boolean; index?: number }>();
+defineProps<{ label: string; value: number | string; icon: Component; color: Status; hint?: string; clickable?: boolean; index?: number; progress?: number }>();
 defineEmits<{ click: [] }>();
 </script>
 
@@ -37,5 +37,11 @@ defineEmits<{ click: [] }>();
       <template v-else>{{ value }}</template>
     </span>
     <span v-if="hint" class="relative mt-1.5 text-xs opacity-75">{{ hint }}</span>
+    <span v-if="progress !== undefined" class="relative mt-2.5 h-2 overflow-hidden rounded-full bg-white/50 dark:bg-white/10">
+      <span
+        class="block h-full rounded-full bg-current transition-[width] duration-1000 ease-(--ease-spring)"
+        :style="{ width: `${Math.min(progress, 1) * 100}%` }"
+      />
+    </span>
   </component>
 </template>

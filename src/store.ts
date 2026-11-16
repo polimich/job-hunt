@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { ENDINGS, emptyState, today, withStatus } from '../shared/pipeline';
 import { celebrate } from './lib/celebrate';
-import { STATUSES, type Company, type Contact, type Db, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
+import { STATUSES, type Company, type Contact, type Db, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
 import { applyFilters, DEFAULT_FILTERS, effectiveStatus, type Filters } from './filters';
 import { buildIndex, search } from './search';
 
@@ -11,9 +11,20 @@ const EMPTY: Db = {
   listings: [],
   companies: [],
   contacts: [],
+  tasks: [],
   state: {},
   runs: [],
-  settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], vueKeywords: [], excludeTitle: '', minSalary: 100000, followUpDays: 7, autoRefresh: true },
+  settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], vueKeywords: [], excludeTitle: '',
+    minSalary: 100000,
+    followUpDays: 7,
+    autoRefresh: true,
+    weeklyGoal: 5,
+    templates: {
+      followUp: { cs: { subject: '', body: '' }, en: { subject: '', body: '' } },
+      thankYou: { cs: { subject: '', body: '' }, en: { subject: '', body: '' } },
+      decline: { cs: { subject: '', body: '' }, en: { subject: '', body: '' } },
+    },
+  },
 };
 
 export const db = reactive<Db>(structuredClone(EMPTY));
@@ -131,6 +142,7 @@ export async function deleteListing(id: string): Promise<void> {
   await api(`/listings/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const companyId = db.listings.find((l) => l.id === id)?.companyId;
   db.listings = db.listings.filter((l) => l.id !== id);
+  db.tasks = db.tasks.filter((t) => t.listingId !== id);
   delete db.state[id];
   const c = db.companies.find((x) => x.id === companyId);
   if (c && !c.salary && !c.emails.length && !db.listings.some((l) => l.companyId === c.id)) db.companies = db.companies.filter((x) => x !== c);
@@ -244,3 +256,30 @@ export const allLabels = computed(() => {
   for (const st of Object.values(db.state)) for (const l of st.labels ?? []) count.set(l, (count.get(l) ?? 0) + 1);
   return [...count.entries()].sort((a, b) => b[1] - a[1]).map(([l]) => l);
 });
+
+// ---------- tasks ----------
+
+export const tasksOf = (listingId: string) => db.tasks.filter((t) => t.listingId === listingId);
+/** Open tasks with a date of today or earlier, soonest first. */
+export const dueTasks = computed(() =>
+  db.tasks.filter((t) => !t.doneAt && t.due && t.due <= todayIso.value).sort((a, b) => a.due.localeCompare(b.due)),
+);
+
+function putTask(t: Task) {
+  const i = db.tasks.findIndex((x) => x.id === t.id);
+  if (i >= 0) db.tasks[i] = t;
+  else db.tasks.push(t);
+}
+
+export async function addTask(listingId: string, title: string, due: string): Promise<void> {
+  putTask(await api<Task>('/tasks', { method: 'POST', body: JSON.stringify({ listingId, title, due }) }));
+}
+
+export async function updateTask(id: string, patch: { title?: string; due?: string; done?: boolean }): Promise<void> {
+  putTask(await api<Task>(`/tasks/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }));
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  await api(`/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  db.tasks = db.tasks.filter((t) => t.id !== id);
+}

@@ -35,8 +35,11 @@ export function looksCzech(text: string): boolean {
   return marks > sample.length * 0.015;
 }
 
-export function mailto(address: string, subject: string, body: string, listing: Listing): string {
-  const fill = (t: string) => t.replaceAll('{title}', listing.title).replaceAll('{company}', listing.company);
+/** A mailto: link with {title}, {company} and {name} (first name of the person, with a leading space) filled in. */
+export function mailto(address: string, subject: string, body: string, listing: Listing, name = ''): string {
+  const first = name.trim().split(/\s+/)[0] ?? '';
+  const fill = (t: string) =>
+    t.replaceAll('{title}', listing.title).replaceAll('{company}', listing.company).replaceAll('{name}', first ? ` ${first}` : '');
   return `mailto:${address}?subject=${encodeURIComponent(fill(subject))}&body=${encodeURIComponent(fill(body))}`;
 }
 

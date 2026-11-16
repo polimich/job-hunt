@@ -4,7 +4,7 @@
  */
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { Company, Contact, Db, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import type { Company, Contact, Db, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
@@ -18,6 +18,39 @@ const DEFAULT_SETTINGS: Settings = {
   minSalary: 100000,
   followUpDays: 7,
   autoRefresh: true,
+  weeklyGoal: 5,
+  templates: {
+    followUp: {
+      cs: {
+        subject: 'Re: {title}',
+        body: 'Dobrý den,\n\nchtěl bych se jen připomenout ohledně mé přihlášky na pozici {title}. O pozici mám stále velký zájem a rád doplním cokoli, co by se hodilo.\n\nDěkuji a přeji hezký den',
+      },
+      en: {
+        subject: 'Re: {title}',
+        body: 'Hi{name},\n\nI wanted to follow up on my application for the {title} role at {company}. I am still very interested and happy to share anything else that would help.\n\nThank you and have a great day',
+      },
+    },
+    thankYou: {
+      cs: {
+        subject: 'Děkuji za dnešní rozhovor – {title}',
+        body: 'Dobrý den,\n\nděkuji za čas a příjemný rozhovor o pozici {title}. Utvrdil jsem se v tom, že by mě práce v {company} bavila. Budu rád za informaci o dalším kroku.\n\nS pozdravem',
+      },
+      en: {
+        subject: 'Thank you – {title} interview',
+        body: 'Hi{name},\n\nthank you for your time today and the great conversation about the {title} role. It confirmed that I would love to work at {company}. I look forward to hearing about the next steps.\n\nBest regards',
+      },
+    },
+    decline: {
+      cs: {
+        subject: 'Pozice {title}',
+        body: 'Dobrý den,\n\nmoc děkuji za nabídku a za čas, který jste mi věnovali. Po zvážení jsem se rozhodl jít jinou cestou, a proto nabídku nepřijmu. Rád bych zůstal v kontaktu.\n\nS pozdravem',
+      },
+      en: {
+        subject: '{title} position',
+        body: 'Hi{name},\n\nthank you very much for the offer and for your time. After careful thought I have decided to go a different way, so I will not accept. I would be glad to stay in touch.\n\nBest regards',
+      },
+    },
+  },
 };
 
 type Row = Record<string, unknown>;
@@ -100,6 +133,7 @@ export const saveListing = (l: Listing): void => upsertListing(l);
 export function deleteListing(id: string): void {
   transaction(db(), () => {
     db().prepare('DELETE FROM state WHERE listing_id = ?').run(id);
+    db().prepare('DELETE FROM tasks WHERE listing_id = ?').run(id);
     db().prepare('DELETE FROM listings WHERE id = ?').run(id);
   });
 }
@@ -229,6 +263,32 @@ export function deleteContact(id: string): void {
   });
 }
 
+// ---------- tasks ----------
+
+const toTask = (r: Row): Task => ({
+  id: r.id as string,
+  listingId: r.listing_id as string,
+  title: r.title as string,
+  due: r.due as string,
+  doneAt: r.done_at as string,
+  createdAt: r.created_at as string,
+});
+
+export const loadTasks = (): Task[] => (db().prepare('SELECT * FROM tasks ORDER BY created_at').all() as Row[]).map(toTask);
+export const getTask = (id: string): Task | undefined => {
+  const r = db().prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Row | undefined;
+  return r ? toTask(r) : undefined;
+};
+export function saveTask(t: Task): void {
+  db()
+    .prepare(
+      `INSERT INTO tasks (id, listing_id, title, due, done_at, created_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET title = excluded.title, due = excluded.due, done_at = excluded.done_at`,
+    )
+    .run(t.id, t.listingId, t.title, t.due, t.doneAt, t.createdAt);
+}
+export const deleteTask = (id: string): void => void db().prepare('DELETE FROM tasks WHERE id = ?').run(id);
+
 // ---------- refresh runs ----------
 
 const toRun = (r: Row): RefreshRun => ({
@@ -254,7 +314,9 @@ export function addRun(run: RefreshRun): void {
 
 export function loadSettings(): Settings {
   const stored = Object.fromEntries((db().prepare('SELECT key, value FROM settings').all() as Row[]).map((r) => [r.key, json(r.value, null)]));
-  return { ...DEFAULT_SETTINGS, ...stored };
+  const merged = { ...DEFAULT_SETTINGS, ...stored } as Settings;
+  merged.templates = { ...DEFAULT_SETTINGS.templates, ...(stored.templates as Partial<Settings['templates']> | undefined) };
+  return merged;
 }
 
 export function saveSettings(s: Settings): void {
@@ -265,7 +327,7 @@ export function saveSettings(s: Settings): void {
 }
 
 export function loadDb(): Db {
-  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
+  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
 }
 
 // ---------- one-time import of the old JSON files ----------

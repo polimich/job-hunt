@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
-import type { Settings } from '../../shared/types';
+import { AlarmClockIcon, MailPlusIcon, DatabaseIcon, DownloadIcon, HardDriveDownloadIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
+import type { Settings, TemplateKind } from '../../shared/types';
 import PageHeader from '../components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,6 +14,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { db, saveSettings } from '../store';
 
 const form = reactive<Settings>(structuredClone(JSON.parse(JSON.stringify(db.settings)) as Settings));
+const TEMPLATE_KINDS: { id: TemplateKind; label: string }[] = [
+  { id: 'followUp', label: 'Připomenutí' },
+  { id: 'thankYou', label: 'Poděkování' },
+  { id: 'decline', label: 'Odmítnutí' },
+];
+
 const backups = ref<string[]>([]);
 const loadBackups = async () => (backups.value = (await (await fetch('/api/backups')).json()) as string[]);
 onMounted(() => void loadBackups().catch(() => undefined));
@@ -80,6 +86,31 @@ async function save() {
 
     <Card>
       <CardHeader>
+        <CardTitle class="flex items-center gap-2"><MailPlusIcon class="size-4 text-muted-foreground" /> Další e-maily</CardTitle>
+        <CardDescription>
+          V detailu pozice pod tlačítkem E-mail. <code class="rounded bg-muted px-1 font-mono text-xs">{company}</code>,
+          <code class="rounded bg-muted px-1 font-mono text-xs">{title}</code> a
+          <code class="rounded bg-muted px-1 font-mono text-xs">{name}</code> (křestní jméno kontaktu s mezerou před ním) se doplní.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs default-value="followUp">
+          <TabsList>
+            <TabsTrigger v-for="k in TEMPLATE_KINDS" :key="k.id" :value="k.id">{{ k.label }}</TabsTrigger>
+          </TabsList>
+          <TabsContent v-for="k in TEMPLATE_KINDS" :key="k.id" :value="k.id" class="grid gap-4 pt-2 md:grid-cols-2">
+            <div v-for="lng in (['cs', 'en'] as const)" :key="lng" class="flex flex-col gap-2">
+              <p class="text-xs font-semibold text-muted-foreground">{{ lng === 'cs' ? 'Česky' : 'Anglicky' }}</p>
+              <Input v-model="form.templates[k.id][lng].subject" :aria-label="`${k.label} ${lng} předmět`" placeholder="Předmět" />
+              <Textarea v-model="form.templates[k.id][lng].body" :aria-label="`${k.label} ${lng} text`" rows="8" class="leading-relaxed" />
+            </div>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
         <CardTitle class="flex items-center gap-2"><SearchIcon class="size-4 text-muted-foreground" /> Hledání nových inzerátů</CardTitle>
         <CardDescription>Každé klíčové slovo přidá dotazy na LinkedIn, které trvají nejdéle. Čtyři až šest slov je rozumné maximum.</CardDescription>
       </CardHeader>
@@ -132,6 +163,11 @@ async function save() {
             <Input id="follow-up-days" v-model.number="form.followUpDays" type="number" min="1" max="60" class="pr-12 tabular-nums" />
             <span class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground">dnech</span>
           </div>
+        </div>
+        <div class="flex max-w-xs flex-col gap-2">
+          <Label for="weekly-goal">Týdenní cíl odeslaných přihlášek</Label>
+          <Input id="weekly-goal" v-model.number="form.weeklyGoal" type="number" min="1" max="50" class="tabular-nums" />
+          <p class="text-xs text-muted-foreground">Na stránce Dnes uvidíš postup a kolik týdnů v řadě ho plníš.</p>
         </div>
         <Label class="flex items-start gap-3 font-normal">
           <Checkbox v-model="form.autoRefresh" class="mt-0.5" />

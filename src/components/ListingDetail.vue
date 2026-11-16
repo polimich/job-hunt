@@ -4,6 +4,11 @@ import { RouterLink, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import {
   ArrowRightIcon,
+  BellRingIcon,
+  ChevronDownIcon,
+  HeartIcon,
+  LanguagesIcon,
+  SendIcon,
   Building2Icon,
   CalendarIcon,
   HandIcon,
@@ -25,6 +30,7 @@ import type { Listing, Status } from '../../shared/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Kbd } from '@/components/ui/kbd';
 import { Label } from '@/components/ui/label';
@@ -39,6 +45,7 @@ import LabelsEditor from './LabelsEditor.vue';
 import RatingStars from './RatingStars.vue';
 import FitBadge from './FitBadge.vue';
 import NextStep from './NextStep.vue';
+import TasksCard from './TasksCard.vue';
 import SalaryRange from './SalaryRange.vue';
 import StatusButtons from './StatusButtons.vue';
 import Timeline from './Timeline.vue';
@@ -83,9 +90,30 @@ async function patch(p: Parameters<typeof patchListing>[1]) {
   }
 }
 
-function draft(lang: 'cs' | 'en'): string {
-  const t = lang === 'cs' ? db.settings.introCs : db.settings.introEn;
-  return email.value ? mailto(email.value.address, t.subject, t.body, props.listing) : '#';
+// E-mails go to a person I know there first, then the company's best address.
+const recipient = computed(() => {
+  const person = contactsOf(props.listing.companyId).find((c) => c.email);
+  return person ? { address: person.email, name: person.name } : { address: email.value?.address ?? '', name: '' };
+});
+const lang = ref<'cs' | 'en'>('cs');
+watch(czech, (v) => (lang.value = v ? 'cs' : 'en'), { immediate: true });
+
+const mails = computed(() => {
+  const t = db.settings.templates;
+  const intro = lang.value === 'cs' ? db.settings.introCs : db.settings.introEn;
+  const link = (m: { subject: string; body: string }) => mailto(recipient.value.address, m.subject, m.body, props.listing, recipient.value.name);
+  return [
+    { label: 'Úvodní e-mail', icon: SendIcon, href: link(intro) },
+    { label: 'Připomenutí', icon: BellRingIcon, href: link(t.followUp[lang.value]) },
+    { label: 'Poděkování po pohovoru', icon: HeartIcon, href: link(t.thankYou[lang.value]) },
+    { label: 'Odmítnutí nabídky', icon: HandIcon, href: link(t.decline[lang.value]) },
+  ];
+});
+
+/** The intro e-mail in the posting's language, for the `e` shortcut. */
+function draft(which: 'cs' | 'en'): string {
+  const t = which === 'cs' ? db.settings.introCs : db.settings.introEn;
+  return mailto(recipient.value.address, t.subject, t.body, props.listing, recipient.value.name);
 }
 
 const router = useRouter();
@@ -158,18 +186,35 @@ const meta = computed(() =>
             <Kbd v-if="showKeys" class="ml-1 h-4 min-w-4 text-[10px]">↵</Kbd>
           </RouterLink>
         </Button>
-        <template v-if="email">
-          <Button as="a" variant="outline" :href="draft(czech ? 'cs' : 'en')">
-            <MailIcon /> E-mail {{ czech ? 'česky' : 'anglicky' }}
-            <Kbd v-if="showKeys" class="ml-1 h-4 min-w-4 text-[10px]">e</Kbd>
-          </Button>
-          <Button as="a" variant="ghost" :href="draft(czech ? 'en' : 'cs')">{{ czech ? 'anglicky' : 'česky' }}</Button>
-        </template>
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
+            <Button variant="outline">
+              <MailIcon /> E-mail
+              <Kbd v-if="showKeys" class="ml-1 h-4 min-w-4 text-[10px]">e</Kbd>
+              <ChevronDownIcon class="opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" class="w-64">
+            <DropdownMenuLabel class="truncate font-normal text-muted-foreground">
+              Komu: {{ recipient.address || 'adresu doplníš v poště' }}{{ recipient.name ? ` (${recipient.name})` : '' }}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem v-for="m in mails" :key="m.label" as-child>
+              <a :href="m.href"><component :is="m.icon" /> {{ m.label }}</a>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @select.prevent="lang = lang === 'cs' ? 'en' : 'cs'">
+              <LanguagesIcon /> Jazyk: {{ lang === 'cs' ? 'česky' : 'anglicky' }} <span class="ml-auto text-xs text-muted-foreground">přepnout</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <StatusButtons :status="status" :show-keys="showKeys" @set="setStatus" />
     </div>
 
     <NextStep :id="listing.id" />
+
+    <TasksCard :listing-id="listing.id" />
 
     <!-- Key facts -->
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">

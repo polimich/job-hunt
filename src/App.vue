@@ -33,7 +33,7 @@ import { statusMeta } from '@/lib/status';
 import { colorMode } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import AddListingDialog from './components/AddListingDialog.vue';
-import { addOpen, db, due, filters, load, loaded, loadError, progress, resumeRefresh, startRefresh, statusCounts } from './store';
+import { addOpen, db, due, dueTasks, filters, load, loaded, loadError, progress, resumeRefresh, startRefresh, statusCounts } from './store';
 import { formatDateTime } from './format';
 
 onMounted(async () => {
@@ -49,7 +49,7 @@ const openCount = computed(() => db.listings.filter((l) => l.open).length);
 const pct = computed(() => (progress.value.total ? Math.round((progress.value.done / progress.value.total) * 100) : 0));
 
 const nav = computed(() => [
-  { to: '/', label: 'Dnes', icon: SunriseIcon, count: due.value.length || undefined, alert: due.value.length > 0, active: route.path === '/' },
+  { to: '/', label: 'Dnes', icon: SunriseIcon, count: due.value.length + dueTasks.value.length || undefined, alert: due.value.length + dueTasks.value.length > 0, active: route.path === '/' },
   { to: '/pozice', label: 'Pozice', icon: LayoutListIcon, count: openCount.value, active: route.path.startsWith('/pozice') },
   { to: '/tabule', label: 'Tabule', icon: SquareKanbanIcon, count: undefined, active: route.path.startsWith('/tabule') },
   { to: '/prehled', label: 'Přehled', icon: ChartColumnIcon, count: undefined, active: route.path.startsWith('/prehled') },

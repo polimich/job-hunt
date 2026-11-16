@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, CalendarClockIcon, EyeIcon, EyeOffIcon } from '@lucide/vue';
+import { AlarmClockIcon, CalendarClockIcon, EyeIcon, EyeOffIcon, ListTodoIcon } from '@lucide/vue';
 import { daysBetween } from '../../shared/pipeline';
 import type { Listing, Status } from '../../shared/types';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,7 @@ const columns = computed(() => {
   }));
 });
 
+const openTasks = (id: string) => db.tasks.filter((t) => t.listingId === id && !t.doneAt).length;
 const nextInterview = (id: string) => db.state[id]?.events.find((e) => e.kind === 'interview' && e.at >= todayIso.value);
 
 const dragging = ref<string>();
@@ -122,8 +123,9 @@ async function onDrop(status: Status) {
                 <FitBadge :fit="l.fit" :auto="l.fitSource === 'auto'" size="sm" />
               </div>
               <p class="line-clamp-2 text-sm leading-snug font-semibold">{{ l.title }}</p>
-              <div v-if="db.state[l.id]?.rating || db.state[l.id]?.labels?.length || db.state[l.id]?.referredBy" class="flex flex-wrap items-center gap-1.5">
+              <div v-if="db.state[l.id]?.rating || db.state[l.id]?.labels?.length || db.state[l.id]?.referredBy || openTasks(l.id)" class="flex flex-wrap items-center gap-1.5">
                 <RatingStars v-if="db.state[l.id]?.rating" :model-value="db.state[l.id]!.rating" readonly size="sm" />
+                <span v-if="openTasks(l.id)" class="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground"><ListTodoIcon class="size-2.5" /> {{ openTasks(l.id) }}</span>
                 <span v-if="db.state[l.id]?.referredBy" class="rounded-full bg-(--st-offer-bg) px-1.5 text-[10px] font-semibold text-(--st-offer-fg)">doporučení</span>
                 <span v-for="t in db.state[l.id]?.labels ?? []" :key="t" class="rounded-full bg-(--st-talking-bg) px-1.5 text-[10px] font-semibold text-(--st-talking-fg)">{{ t }}</span>
               </div>

@@ -3,7 +3,8 @@ import { addDays, emptyState, followedUp, furthestRank, looksGhosted, normalizeS
 import type { Listing } from '../shared/types';
 import { parseTitle } from '../server/manual';
 import { refreshDue } from '../server/snapshot';
-import { computeStats, mondayOf } from '../src/stats';
+import { computeStats, mondayOf, weeklyGoal } from '../src/stats';
+import { mailto } from '../src/format';
 
 const S = { followUpDays: 7 };
 const DAY = '2026-11-16';
@@ -119,5 +120,25 @@ describe('refreshDue', () => {
     expect(refreshDue(undefined, at(3))).toBe(false);
     expect(refreshDue(new Date(2026, 10, 16, 8).toISOString(), at(12))).toBe(false);
     expect(refreshDue(new Date(2026, 10, 15, 8).toISOString(), at(12))).toBe(true);
+  });
+});
+
+describe('weeklyGoal', () => {
+  const sent = (...days: string[]) => Object.fromEntries(days.map((d, i) => [`l${i}`, { ...emptyState(), status: 'applied' as const, contactedAt: d }]));
+  it('counts this week and the streak of full weeks before it', () => {
+    const st = sent('2026-11-02', '2026-11-03', '2026-11-09', '2026-11-10', '2026-11-16');
+    expect(weeklyGoal(st, '2026-11-18', 2)).toEqual({ thisWeek: 1, goal: 2, streak: 2 });
+    expect(weeklyGoal(st, '2026-11-18', 1)).toEqual({ thisWeek: 1, goal: 1, streak: 3 });
+  });
+  it('breaks the streak on a short week', () => {
+    expect(weeklyGoal(sent('2026-11-02', '2026-11-03', '2026-11-16', '2026-11-17'), '2026-11-18', 2).streak).toBe(1);
+  });
+});
+
+describe('mailto', () => {
+  it('fills title, company and the first name', () => {
+    const l = { title: 'Dev', company: 'Acme' } as Listing;
+    expect(decodeURIComponent(mailto('a@b.cz', '{title}', 'Hi{name}, {company}', l, 'Jana Nováková'))).toBe('mailto:a@b.cz?subject=Dev&body=Hi Jana, Acme');
+    expect(decodeURIComponent(mailto('', 's', 'Hi{name},', l))).toBe('mailto:?subject=s&body=Hi,');
   });
 });

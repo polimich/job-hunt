@@ -5,12 +5,12 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { addDays, cleanLabels, emptyState, followedUp, newEventId, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
-import { STATUSES, type Contact, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { STATUSES, type Contact, type Task, type ListingState, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteContact, deleteListing, getContact, getState, saveContact, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteListing, deleteTask, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, putState, saveCompanies, saveListing, saveSettings } from './store.ts';
 
 const app = new Hono();
 
@@ -132,6 +132,7 @@ app.put('/api/settings', async (c) => {
   }
   next.followUpDays = Math.min(Math.max(Math.round(Number(next.followUpDays) || 7), 1), 60);
   next.autoRefresh = next.autoRefresh !== false;
+  next.weeklyGoal = Math.min(Math.max(Math.round(Number(next.weeklyGoal) || 5), 1), 50);
   saveSettings(next);
   return c.json(next);
 });
@@ -165,6 +166,39 @@ app.patch('/api/contacts/:id', async (c) => {
 
 app.delete('/api/contacts/:id', (c) => {
   deleteContact(c.req.param('id'));
+  return c.json({ ok: true });
+});
+
+const isDay = (v: unknown): v is string => typeof v === 'string' && (v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v));
+
+app.post('/api/tasks', async (c) => {
+  const body = (await c.req.json()) as Partial<Task>;
+  const title = String(body.title ?? '').trim().slice(0, 300);
+  if (!title) return c.json({ error: 'title is required' }, 400);
+  if (!loadListings().some((l) => l.id === body.listingId)) return c.json({ error: 'unknown listing' }, 400);
+  if (!isDay(body.due ?? '')) return c.json({ error: 'bad date' }, 400);
+  const task: Task = { id: newEventId(), listingId: body.listingId!, title, due: body.due ?? '', doneAt: '', createdAt: new Date().toISOString() };
+  saveTask(task);
+  return c.json(task);
+});
+
+app.patch('/api/tasks/:id', async (c) => {
+  const prev = getTask(c.req.param('id'));
+  if (!prev) return c.json({ error: 'not found' }, 404);
+  const body = (await c.req.json()) as { title?: string; due?: string; done?: boolean };
+  const next = { ...prev };
+  if (typeof body.title === 'string' && body.title.trim()) next.title = body.title.trim().slice(0, 300);
+  if (body.due !== undefined) {
+    if (!isDay(body.due)) return c.json({ error: 'bad date' }, 400);
+    next.due = body.due;
+  }
+  if (typeof body.done === 'boolean') next.doneAt = body.done ? new Date().toISOString() : '';
+  saveTask(next);
+  return c.json(next);
+});
+
+app.delete('/api/tasks/:id', (c) => {
+  deleteTask(c.req.param('id'));
   return c.json({ ok: true });
 });
 

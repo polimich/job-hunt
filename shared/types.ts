@@ -114,6 +114,24 @@ export interface TrackEvent {
   text: string;
 }
 
+/** A to-do on one application: take-home assignment, send portfolio, prepare questions… */
+export interface Task {
+  id: string;
+  listingId: string;
+  title: string;
+  /** yyyy-mm-dd, '' = no date. */
+  due: string;
+  /** ISO time it was ticked off, '' while open. */
+  doneAt: string;
+  createdAt: string;
+}
+
+export type TemplateKind = 'followUp' | 'thankYou' | 'decline';
+export interface MailTemplate {
+  subject: string;
+  body: string;
+}
+
 /** A person at a company: recruiter, hiring manager, referrer… */
 export interface Contact {
   id: string;
@@ -181,12 +199,17 @@ export interface Settings {
   followUpDays: number;
   /** Run a refresh by itself once a day while the server is running. */
   autoRefresh: boolean;
+  /** Applications I want to send per week. */
+  weeklyGoal: number;
+  /** Follow-up, thank-you and decline e-mails; {company}, {title} and {name} are replaced. */
+  templates: Record<TemplateKind, { cs: MailTemplate; en: MailTemplate }>;
 }
 
 export interface Db {
   listings: Listing[];
   companies: Company[];
   contacts: Contact[];
+  tasks: Task[];
   state: Record<string, ListingState>;
   runs: RefreshRun[];
   settings: Settings;

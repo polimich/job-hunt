@@ -105,6 +105,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE state ADD COLUMN referred_by TEXT NOT NULL DEFAULT '';
   ALTER TABLE events ADD COLUMN contact_id TEXT;
   `,
+  // 3: to-dos per application.
+  `
+  CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    listing_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    due TEXT NOT NULL DEFAULT '',
+    done_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX tasks_listing ON tasks(listing_id);
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

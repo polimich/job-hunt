@@ -31,7 +31,7 @@ import { ENDINGS } from '../../shared/pipeline';
 import { cn } from '@/lib/utils';
 import { DEFAULT_FILTERS, type Filters } from '../filters';
 import { bestEmail, looksCzech, mailto, PLACE_LABEL } from '../format';
-import { allLabels, allTags, companyById, db, filters, latestAdded, setState, statusCounts, statusOf, visible } from '../store';
+import { allLabels, allTags, companyById, contactsOf, db, filters, latestAdded, setState, statusCounts, statusOf, visible } from '../store';
 import { selectedId } from '../selection';
 import { toast } from 'vue-sonner';
 
@@ -112,10 +112,11 @@ async function mark(status: Status) {
 
 function emailDraft() {
   const l = selected.value;
-  const address = l && bestEmail(companyById.value.get(l.companyId))?.address;
-  if (!l || !address) return;
+  if (!l) return;
+  const person = contactsOf(l.companyId).find((c) => c.email);
+  const address = person?.email ?? bestEmail(companyById.value.get(l.companyId))?.address ?? '';
   const t = looksCzech(l.text || l.strengths) ? db.settings.introCs : db.settings.introEn;
-  window.location.href = mailto(address, t.subject, t.body, l);
+  window.location.href = mailto(address, t.subject, t.body, l, person?.name);
 }
 
 function onKey(e: KeyboardEvent) {

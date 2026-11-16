@@ -9,6 +9,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   CircleCheckBigIcon,
+  FlameIcon,
   GhostIcon,
   PlusIcon,
   SparklesIcon,
@@ -24,7 +25,8 @@ import FitBadge from '../components/FitBadge.vue';
 import StatTile from '../components/StatTile.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import { dueLabel, shortDate } from '../format';
-import { addOpen, db, due, filters, followUp, latestAdded, planned, setState, statusOf, todayIso, upcomingInterviews, type AgendaItem } from '../store';
+import { weeklyGoal } from '../stats';
+import { addOpen, db, due, dueTasks, filters, followUp, latestAdded, listingById, planned, updateTask, setState, statusOf, todayIso, upcomingInterviews, type AgendaItem } from '../store';
 
 const router = useRouter();
 
@@ -37,7 +39,7 @@ const greeting = computed(() => {
   return h < 10 ? 'Dobré ráno' : h < 18 ? 'Dobré odpoledne' : 'Dobrý večer';
 });
 const summary = computed(() => {
-  const n = due.value.length;
+  const n = due.value.length + dueTasks.value.length;
   if (!n) return 'Dnes nic nehoří. Mrkni na nové pozice nebo něco odešli.';
   return n === 1 ? 'Dnes čeká jedna věc k vyřízení.' : `Dnes čekají ${n} ${n < 5 ? 'věci' : 'věcí'} k vyřízení.`;
 });
@@ -52,13 +54,9 @@ const toApply = computed(() =>
     .sort((a, b) => b.fit - a.fit || Number(b.recommended) - Number(a.recommended))
     .slice(0, 6),
 );
+const goal = computed(() => weeklyGoal(db.state, todayIso.value, db.settings.weeklyGoal || 5));
 const freshCount = computed(() => db.listings.filter((l) => latestAdded.value.has(l.id) && statusOf(l) === 'new').length);
 
-const weekStart = computed(() => {
-  const d = new Date(`${todayIso.value}T12:00:00`);
-  return addDays(todayIso.value, -((d.getDay() + 6) % 7));
-});
-const sentThisWeek = computed(() => Object.values(db.state).filter((s) => s.contactedAt && s.contactedAt >= weekStart.value).length);
 
 const waiting = (x: AgendaItem) => x.state.status === 'applied' || x.state.status === 'talking';
 const fail = (e: unknown) => toast.error('Uložení selhalo', { description: e instanceof Error ? e.message : String(e) });
@@ -86,16 +84,29 @@ function showNew() {
         <h1 class="flex items-center gap-2 text-3xl font-bold tracking-tight sm:text-4xl">
           {{ greeting }} <span class="inline-block origin-[70%_80%] animate-wiggle">👋</span>
         </h1>
-        <p class="text-sm text-muted-foreground">{{ summary }}</p>
+        <p class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          {{ summary }}
+          <span v-if="goal.streak" class="inline-flex animate-pop items-center gap-1 rounded-full bg-(--st-offer-bg) px-2 py-0.5 text-xs font-bold text-(--st-offer-fg)">
+            <FlameIcon class="size-3.5" /> {{ goal.streak }} {{ goal.streak === 1 ? 'týden' : goal.streak < 5 ? 'týdny' : 'týdnů' }} v řadě
+          </span>
+        </p>
       </div>
       <Button variant="outline" @click="addOpen = true"><PlusIcon /> Přidat pozici</Button>
     </header>
 
     <!-- Summary tiles -->
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatTile label="K vyřízení" :value="due.length" :icon="AlarmClockIcon" color="offer" :index="1" />
+      <StatTile label="K vyřízení" :value="due.length + dueTasks.length" :icon="AlarmClockIcon" color="offer" :index="1" />
       <StatTile label="Pohovory do 14 dní" :value="interviews.length" :icon="CalendarClockIcon" color="interview" :index="2" />
-      <StatTile label="Odesláno tento týden" :value="sentThisWeek" :icon="SendIcon" color="applied" :index="3" />
+      <StatTile
+        label="Odesláno tento týden"
+        :value="goal.thisWeek"
+        :icon="SendIcon"
+        color="applied"
+        :index="3"
+        :progress="goal.thisWeek / goal.goal"
+        :hint="goal.thisWeek >= goal.goal ? `Cíl ${goal.goal} splněn 🎉` : `Cíl ${goal.goal} · zbývá ${goal.goal - goal.thisWeek}`"
+      />
       <StatTile label="Nové z obnovení" :value="freshCount" :icon="SparklesIcon" color="interested" clickable :index="4" @click="showNew" />
     </div>
 
@@ -104,9 +115,45 @@ function showNew() {
         <!-- Due -->
         <section class="flex flex-col gap-2">
           <h2 class="flex items-center gap-2 text-lg font-bold">
-            <AlarmClockIcon :class="cn('size-5 text-primary', due.length && 'animate-wiggle')" /> K vyřízení
+            <AlarmClockIcon :class="cn('size-5 text-primary', (due.length || dueTasks.length) && 'animate-wiggle')" /> K vyřízení
           </h2>
-          <div v-if="!due.length" class="flex animate-rise items-center gap-4 rounded-2xl border border-dashed bg-card/60 p-5 text-sm text-muted-foreground">
+          <TransitionGroup v-if="dueTasks.length" name="list" tag="ul" class="relative flex flex-col gap-2">
+            <li
+              v-for="(t, i) in dueTasks"
+              :key="t.id"
+              :style="{ '--i': i + 5 }"
+              class="flex animate-rise items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-soft"
+            >
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked="false"
+                :aria-label="`Hotovo: ${t.title}`"
+                class="flex size-6 shrink-0 items-center justify-center rounded-lg border-2 border-foreground/25 transition-all duration-300 ease-(--ease-spring) hover:scale-110 hover:border-(--st-interview-dot) hover:bg-(--st-interview-bg)"
+                @click="act(updateTask(t.id, { done: true }), 'Úkol hotový')"
+              >
+                <CheckIcon class="size-3.5 opacity-0 transition-opacity hover:opacity-60" />
+              </button>
+              <RouterLink :to="`/pozice/${t.listingId}`" class="min-w-0 flex-1">
+                <p class="truncate text-sm font-semibold">{{ t.title }}</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  <span :class="cn('font-semibold', t.due < todayIso ? 'text-destructive' : 'text-primary')">{{ dueLabel(daysBetween(todayIso, t.due)) }}</span>
+                  · {{ listingById.get(t.listingId)?.company }} – {{ listingById.get(t.listingId)?.title }}
+                </p>
+              </RouterLink>
+              <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                  <Button size="sm" variant="ghost" class="text-muted-foreground">Odložit <ChevronDownIcon /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem v-for="n in [1, 3, 7]" :key="n" @select="act(updateTask(t.id, { due: addDays(todayIso, n) }))">
+                    {{ n === 1 ? 'Na zítra' : n === 7 ? 'O týden' : `O ${n} dny` }}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </li>
+          </TransitionGroup>
+          <div v-if="!due.length && !dueTasks.length" class="flex animate-rise items-center gap-4 rounded-2xl border border-dashed bg-card/60 p-5 text-sm text-muted-foreground">
             <span class="flex size-12 shrink-0 animate-float items-center justify-center rounded-2xl bg-(--st-interview-bg) text-(--st-interview-fg)">
               <CircleCheckBigIcon class="size-6" />
             </span>
