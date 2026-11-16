@@ -102,6 +102,31 @@ source.
 Roles found elsewhere (referral, recruiter, careers page) are added with **Přidat pozici**. Pasting a URL
 tries to fill in title, company and text. Refresh never re-checks or closes these.
 
+## Gmail
+
+Connecting Gmail lets the app send e-mails from a listing (template + CV attached, logged in the history automatically) and read job mail: replies, portal and LinkedIn confirmations, rejections and invitations show up in each listing's "E-maily" and in "Z pošty" on Dnes. Status changes are only suggested; you confirm them.
+
+What it reads: mail from applicant-tracking systems and job boards (Greenhouse, Lever, Teamio, jobs.cz, LinkedIn application and message notifications…), mail to and from the domains of companies you are past "Nové" with, replies in threads the app knows, and anything you label `job-hunt` in Gmail. Not the rest of the inbox. The first sync looks back 30 days, then every 5 minutes while the app runs.
+
+### One-time setup (~15 minutes)
+
+1. Open [console.cloud.google.com](https://console.cloud.google.com/) and create a project (any name, e.g. "job-hunt").
+2. **APIs & Services → Library**: enable **Gmail API**.
+3. **Google Auth Platform → Branding / Get started**: app name "job-hunt", your e-mail as support and contact, Audience **External**.
+4. **Audience**: click **Publish app** (status "In production"). In "Testing" Google expires the sign-in after 7 days and you would reconnect every week. The app stays unverified; that is fine for personal use (Google exempts it), you just see a warning when connecting.
+5. **Clients → Create client**: type **Desktop app**. Copy the client ID and secret into `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (see `.env.example`).
+6. Restart `pnpm dev`, open **Nastavení → Gmail → Připojit Gmail**, pick your account. On "Google hasn't verified this app" choose **Advanced → Go to job-hunt**, then allow reading and sending.
+
+The app asks for `gmail.readonly` and `gmail.send`. The sign-in token is stored in the macOS Keychain (elsewhere in `data/secrets/`, readable only by you), never in the database. Mail lives in `data/jobhunt.db` and therefore also in the daily backups for up to 30 days; **Nastavení → Gmail → Smazat staženou poštu** removes it from the database. **Odpojit** revokes the token at Google.
+
+If publishing in step 4 is not offered, leave the app in Testing, add your address under **Audience → Test users**, and reconnect when the app says the access expired.
+
+Without Gmail, the E-mail button falls back to opening your mail program (no attachment, nothing logged).
+
+### Safety
+
+The API only answers requests from the app itself: unknown `Host` headers, foreign `Origin`s and non-JSON bodies are refused, so a web page open in another tab cannot use the app to send mail.
+
 ## Keyboard (list page)
 
 `j` / `k` next and previous · `i` interested · `a` sent · `v` talking · `p` interview · `f` offer ·

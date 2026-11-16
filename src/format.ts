@@ -44,12 +44,15 @@ export function looksCzech(text: string): boolean {
   return marks > sample.length * 0.015;
 }
 
-/** A mailto: link with {title}, {company} and {name} (first name of the person, with a leading space) filled in. */
-export function mailto(address: string, subject: string, body: string, listing: Listing, name = ''): string {
+/** Fill {title}, {company} and {name} (first name of the person, with a leading space) in a template text. */
+export function fillTemplate(text: string, listing: Pick<Listing, 'title' | 'company'>, name = ''): string {
   const first = name.trim().split(/\s+/)[0] ?? '';
-  const fill = (t: string) =>
-    t.replaceAll('{title}', listing.title).replaceAll('{company}', listing.company).replaceAll('{name}', first ? ` ${first}` : '');
-  return `mailto:${address}?subject=${encodeURIComponent(fill(subject))}&body=${encodeURIComponent(fill(body))}`;
+  return text.replaceAll('{title}', listing.title).replaceAll('{company}', listing.company).replaceAll('{name}', first ? ` ${first}` : '');
+}
+
+/** A mailto: link with the template placeholders filled in. */
+export function mailto(address: string, subject: string, body: string, listing: Listing, name = ''): string {
+  return `mailto:${address}?subject=${encodeURIComponent(fillTemplate(subject, listing, name))}&body=${encodeURIComponent(fillTemplate(body, listing, name))}`;
 }
 
 /** Czech day count: 1 den, 2–4 dny, 5+ dní. */

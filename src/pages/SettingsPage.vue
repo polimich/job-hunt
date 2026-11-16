@@ -7,6 +7,7 @@ import { SOURCE_LABELS, type Level, type Settings, type Source, type TemplateKin
 import FilterChip from '../components/FilterChip.vue';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import PageHeader from '../components/PageHeader.vue';
+import GmailCard from '../components/GmailCard.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -237,13 +238,15 @@ async function save() {
       </CardContent>
     </Card>
 
+    <GmailCard />
+
     <Card>
       <CardHeader>
         <CardTitle class="flex items-center gap-2"><MailIcon class="size-4 text-muted-foreground" /> Úvodní e-mail</CardTitle>
         <CardDescription>
-          Tlačítko E-mail u pozice otevře poštu s tímhle textem.
+          Tlačítko E-mail u pozice předvyplní tímhle textem nový e-mail.
           <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">{title}</code> se nahradí názvem pozice,
-          <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">{company}</code> firmou. Životopis přilož ručně.
+          <code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">{company}</code> firmou. CV přiložíš v okně e-mailu, když je připojený Gmail; jinak ručně v poště.
         </CardDescription>
       </CardHeader>
       <CardContent>

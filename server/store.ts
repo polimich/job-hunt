@@ -2,12 +2,27 @@
  * Data access over SQLite. Functions keep the shape the rest of the server already uses
  * (whole lists for listings/companies, one record for state), backed by real tables.
  */
+import { extname, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
 import type { Company, Contact, Db, Doc, Offer, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
+
+// ---------- document files ----------
+
+export const DOCS_DIR = join(DATA_DIR, 'docs');
+export const DOC_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.odt': 'application/vnd.oasis.opendocument.text',
+  '.md': 'text/markdown; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+};
+export const docPath = (d: Doc) => join(DOCS_DIR, `${d.id}${extname(d.fileName).toLowerCase()}`);
+
 
 const DEFAULT_SETTINGS: Settings = {
   introCs: { subject: 'Zájem o pozici {title}', body: '' },

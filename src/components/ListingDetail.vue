@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, type Component } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import {
@@ -26,7 +26,7 @@ import {
   TriangleAlertIcon,
   WalletIcon,
 } from '@lucide/vue';
-import type { Listing, Status } from '../../shared/types';
+import type { Listing, MailDraft, MailMessage, Status } from '../../shared/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,7 +36,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { bestEmail, EMAIL_KIND_LABEL, formatDate, looksCzech, mailto, PLACE_LABEL } from '../format';
+import { bestEmail, EMAIL_KIND_LABEL, formatDate, looksCzech, PLACE_LABEL } from '../format';
 import { highlight } from '../search';
 import { skillMatch } from '../../shared/pipeline';
 import { companyById, contactsOf, db, deleteListing, filters, latestAdded, patchListing, setState, statusOf } from '../store';
@@ -51,6 +51,9 @@ import TasksCard from './TasksCard.vue';
 import SalaryRange from './SalaryRange.vue';
 import StatusButtons from './StatusButtons.vue';
 import Timeline from './Timeline.vue';
+import ComposeDialog from './ComposeDialog.vue';
+import MailThread from './MailThread.vue';
+import { mailCounts, mailStatus } from '../mail';
 
 const props = defineProps<{ listing: Listing }>();
 
@@ -101,26 +104,27 @@ const recipient = computed(() => {
   const person = contactsOf(props.listing.companyId).find((c) => c.email);
   return person ? { address: person.email, name: person.name } : { address: email.value?.address ?? '', name: '' };
 });
+
 const lang = ref<'cs' | 'en'>('cs');
 watch(czech, (v) => (lang.value = v ? 'cs' : 'en'), { immediate: true });
 
-const mails = computed(() => {
-  const t = db.settings.templates;
-  const intro = lang.value === 'cs' ? db.settings.introCs : db.settings.introEn;
-  const link = (m: { subject: string; body: string }) => mailto(recipient.value.address, m.subject, m.body, props.listing, recipient.value.name);
-  return [
-    { label: 'Úvodní e-mail', icon: SendIcon, href: link(intro) },
-    { label: 'Připomenutí', icon: BellRingIcon, href: link(t.followUp[lang.value]) },
-    { label: 'Poděkování po pohovoru', icon: HeartIcon, href: link(t.thankYou[lang.value]) },
-    { label: 'Odmítnutí nabídky', icon: HandIcon, href: link(t.decline[lang.value]) },
-  ];
-});
-
-/** The intro e-mail in the posting's language, for the `e` shortcut. */
-function draft(which: 'cs' | 'en'): string {
-  const t = which === 'cs' ? db.settings.introCs : db.settings.introEn;
-  return mailto(recipient.value.address, t.subject, t.body, props.listing, recipient.value.name);
+const MAILS: { kind: MailDraft['kind']; label: string; icon: Component }[] = [
+  { kind: 'intro', label: 'Úvodní e-mail', icon: SendIcon },
+  { kind: 'followUp', label: 'Připomenutí', icon: BellRingIcon },
+  { kind: 'thankYou', label: 'Poděkování po pohovoru', icon: HeartIcon },
+  { kind: 'decline', label: 'Odmítnutí nabídky', icon: HandIcon },
+];
+// One compose dialog serves the E-mail menu, replies from the thread and the `e` shortcut in the list.
+const composeOpen = ref(false);
+const composeKind = ref<MailDraft['kind']>('intro');
+const replyTo = ref<MailMessage>();
+const mailVersion = ref(0);
+function compose(kind: MailDraft['kind'], reply?: MailMessage) {
+  composeKind.value = kind;
+  replyTo.value = reply;
+  composeOpen.value = true;
 }
+defineExpose({ compose });
 
 const router = useRouter();
 async function remove() {
@@ -194,8 +198,8 @@ const meta = computed(() =>
               Komu: {{ recipient.address || 'adresu doplníš v poště' }}{{ recipient.name ? ` (${recipient.name})` : '' }}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem v-for="m in mails" :key="m.label" as-child>
-              <a :href="m.href"><component :is="m.icon" /> {{ m.label }}</a>
+            <DropdownMenuItem v-for="m in MAILS" :key="m.kind" @select="compose(m.kind)">
+              <component :is="m.icon" /> {{ m.label }}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem @select.prevent="lang = lang === 'cs' ? 'en' : 'cs'">
@@ -231,7 +235,7 @@ const meta = computed(() =>
             <a :href="`mailto:${e.address}`" class="truncate font-medium text-primary hover:underline underline-offset-4">{{ e.address }}</a>
             <span class="text-xs text-muted-foreground">{{ EMAIL_KIND_LABEL[e.kind] }}<template v-if="e.note"> · {{ e.note }}</template></span>
           </p>
-          <p class="mt-1 text-[11px] text-muted-foreground">Životopis přilož ručně.</p>
+          <p v-if="!mailStatus.connected" class="mt-1 text-[11px] text-muted-foreground">Životopis přilož ručně.</p>
         </template>
         <p v-else class="text-sm text-muted-foreground">Jen formulář u inzerátu.</p>
       </section>
@@ -314,6 +318,8 @@ const meta = computed(() =>
       <Textarea :id="`note-${listing.id}`" v-model="note" rows="2" placeholder="Vlastní poznámka… (ukládá se při opuštění pole)" class="min-h-16 bg-card" @blur="saveNote" />
     </section>
 
+    <MailThread v-if="tracked || mailCounts[listing.id]" :listing-id="listing.id" :refresh="mailVersion" @reply="(m) => compose('other', m)" />
+
     <Timeline v-if="tracked" :id="listing.id" :company-id="listing.companyId" />
 
     <!-- Assessment -->
@@ -378,5 +384,6 @@ const meta = computed(() =>
         <Trash2Icon /> Smazat
       </Button>
     </footer>
+    <ComposeDialog v-model:open="composeOpen" :listing="listing" :kind="composeKind" :lang="lang" :reply-to="replyTo" @sent="mailVersion++" />
   </article>
 </template>

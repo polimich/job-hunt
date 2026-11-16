@@ -7,7 +7,7 @@ import * as store from '../server/store';
 
 const listing = (over: Partial<Listing> = {}): Listing => ({
   id: 'a', companyId: 'co', company: 'Co', title: 'Frontend', url: 'https://x', source: 'other', sourceId: 'a', location: 'Brno',
-  mode: '', place: 'brno', contract: '', stack: '', tags: ['React'], salaryPosted: '', benefits: '', fit: 3, fitSource: 'auto',
+  mode: '', place: 'local', contract: '', stack: '', tags: ['React'], salaryPosted: '', benefits: '', fit: 3, fitSource: 'auto',
   recommended: false, strengths: '', weaknesses: '', vue: '', text: 'hello', firstSeen: '2026-11-12', lastChecked: '2026-11-16', open: true,
   ...over,
 });

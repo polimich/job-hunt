@@ -4,7 +4,7 @@ import { buildIndex, highlight, search } from '../src/search';
 
 const base: Listing = {
   id: 'a', companyId: 'co', company: 'Kontent.ai', title: 'Fullstack vývojář', url: 'https://x', source: 'other', sourceId: 'a',
-  location: 'Brno', mode: '', place: 'brno', contract: '', stack: 'React, TypeScript', tags: [], salaryPosted: '', benefits: '', fit: 3,
+  location: 'Brno', mode: '', place: 'local', contract: '', stack: 'React, TypeScript', tags: [], salaryPosted: '', benefits: '', fit: 3,
   fitSource: 'claude', recommended: false, strengths: '', weaknesses: '', vue: '', text: 'Hledáme kolegu se zkušeností s Reactem.',
   firstSeen: '', lastChecked: '', open: true,
 };

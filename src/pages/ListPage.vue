@@ -31,8 +31,9 @@ import { STATUS_META } from '@/lib/status';
 import { ENDINGS } from '../../shared/pipeline';
 import { cn } from '@/lib/utils';
 import { DEFAULT_FILTERS, type Filters } from '../filters';
-import { bestEmail, looksCzech, mailto, PLACE_LABEL } from '../format';
-import { allLabels, allTags, companyById, contactsOf, db, filters, latestAdded, setState, statusCounts, statusOf, visible } from '../store';
+import { PLACE_LABEL } from '../format';
+import { mailCounts } from '../mail';
+import { allLabels, allTags, companyById, db, filters, latestAdded, setState, statusCounts, statusOf, visible } from '../store';
 import { selectedId } from '../selection';
 import { toast } from 'vue-sonner';
 
@@ -118,14 +119,9 @@ async function mark(status: Status) {
   if (!visible.value.some((l) => l.id === current.id) && neighbour) selectedId.value = neighbour.id;
 }
 
-function emailDraft() {
-  const l = selected.value;
-  if (!l) return;
-  const person = contactsOf(l.companyId).find((c) => c.email);
-  const address = person?.email ?? bestEmail(companyById.value.get(l.companyId))?.address ?? '';
-  const t = looksCzech(l.text || l.strengths) ? db.settings.introCs : db.settings.introEn;
-  window.location.href = mailto(address, t.subject, t.body, l, person?.name);
-}
+// The detail pane owns the compose dialog (also mounted, just hidden, on narrow screens).
+const detail = ref<InstanceType<typeof ListingDetail>>();
+const emailDraft = () => detail.value?.compose('intro');
 
 function onKey(e: KeyboardEvent) {
   const target = e.target as HTMLElement;
@@ -359,6 +355,7 @@ const SHORTCUTS: [string[], string][] = [
                 <span>{{ PLACE_LABEL[l.place] }}</span>
                 <span class="text-border">•</span>
                 <SalaryRange :company="companyById.get(l.companyId)" :posted="l.salaryPosted" class="text-xs" />
+                <span v-if="mailCounts[l.id]" class="inline-flex items-center gap-0.5 tabular-nums" :title="`${mailCounts[l.id]} e-mailů`"><MailIcon class="size-3" />{{ mailCounts[l.id] }}</span>
                 <RatingStars v-if="db.state[l.id]?.rating" :model-value="db.state[l.id]!.rating" readonly size="sm" />
                 <span v-for="t in db.state[l.id]?.labels ?? []" :key="t" class="rounded-full bg-(--st-talking-bg) px-1.5 text-[10px] font-semibold text-(--st-talking-fg)">{{ t }}</span>
               </span>
@@ -380,7 +377,7 @@ const SHORTCUTS: [string[], string][] = [
 
       <div class="hidden overflow-y-auto scrollbar-thin md:block">
         <div class="mx-auto max-w-4xl px-6 pt-6 pb-16 lg:px-10">
-          <ListingDetail v-if="selected" :key="selected.id" :listing="selected" />
+          <ListingDetail v-if="selected" ref="detail" :key="selected.id" :listing="selected" />
           <Empty v-if="!selected" class="py-24">
             <EmptyHeader>
               <EmptyTitle>Vyber pozici vlevo</EmptyTitle>

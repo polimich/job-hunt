@@ -172,6 +172,51 @@ const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   `,
   // 6: a general search profile instead of one person's Brno/Vue setup.
   searchProfile,
+  // 7: e-mail from Gmail, linked to applications. Kept out of loadDb() and the exports.
+  `
+  CREATE TABLE mail_threads (
+    id TEXT PRIMARY KEY,
+    listing_id TEXT,
+    company_id TEXT,
+    match_reason TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE messages (
+    id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL,
+    listing_id TEXT,
+    company_id TEXT,
+    direction TEXT NOT NULL,
+    from_addr TEXT NOT NULL DEFAULT '',
+    from_name TEXT NOT NULL DEFAULT '',
+    to_addrs TEXT NOT NULL DEFAULT '[]',
+    subject TEXT NOT NULL DEFAULT '',
+    snippet TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    sent_at TEXT NOT NULL,
+    rfc_message_id TEXT NOT NULL DEFAULT '',
+    in_reply_to TEXT NOT NULL DEFAULT '',
+    refs TEXT NOT NULL DEFAULT '',
+    cls TEXT NOT NULL,
+    calendar TEXT NOT NULL DEFAULT '',
+    attachments TEXT NOT NULL DEFAULT '[]',
+    event_id TEXT,
+    match_reason TEXT NOT NULL DEFAULT '',
+    confidence TEXT NOT NULL DEFAULT '',
+    triage TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX messages_listing ON messages(listing_id);
+  CREATE INDEX messages_thread ON messages(thread_id);
+  CREATE INDEX messages_rfc ON messages(rfc_message_id);
+  CREATE TABLE suggestions (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL,
+    listing_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE mail_sync (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

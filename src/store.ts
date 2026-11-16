@@ -58,9 +58,19 @@ watch(filters, (f) => {
   }
 });
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, { ...init, headers: { 'Content-Type': 'application/json' } });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    // Server errors come as { error }; show just the message.
+    const text = await res.text();
+    let msg = text;
+    try {
+      msg = (JSON.parse(text) as { error?: string }).error ?? text;
+    } catch {
+      /* plain text */
+    }
+    throw new Error(msg || String(res.status));
+  }
   return (await res.json()) as T;
 }
 

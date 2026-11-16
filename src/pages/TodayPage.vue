@@ -21,6 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { cn } from '@/lib/utils';
 import CompanyAvatar from '../components/CompanyAvatar.vue';
 import FitBadge from '../components/FitBadge.vue';
+import InboxTriage from '../components/InboxTriage.vue';
 import StatTile from '../components/StatTile.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import { dueLabel, shortDate } from '../format';
@@ -104,6 +105,8 @@ function showNew() {
       />
       <StatTile label="Nové z obnovení" :value="freshCount" :icon="SparklesIcon" color="interested" clickable @click="showNew" />
     </div>
+
+    <InboxTriage />
 
     <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div class="flex flex-col gap-6">
