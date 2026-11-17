@@ -17,8 +17,9 @@ import { extname } from 'node:path';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { guard } from './guard.ts';
 import { auth, calendarToken } from './auth.ts';
+import { summarizeNow, summaryStatus } from './summary-queue.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, getSummary, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
 
 const port = Number(process.env.PORT ?? 5174);
 const app = new Hono();
@@ -202,6 +203,7 @@ app.put('/api/settings', async (c) => {
   next.level = LEVELS.includes(next.level) ? next.level : 'any';
   next.followUpDays = Math.min(Math.max(Math.round(Number(next.followUpDays) || 7), 1), 60);
   next.autoRefresh = next.autoRefresh !== false;
+  next.aiSummaries = next.aiSummaries !== false;
   next.weeklyGoal = Math.min(Math.max(Math.round(Number(next.weeklyGoal) || 5), 1), 50);
   next.skills = words(next.skills, 60);
   saveSettings(next);
@@ -386,6 +388,11 @@ app.post('/api/restore', async (c) => {
   }
 });
 app.post('/api/backups', (c) => c.json({ file: backup(today(), true) }));
+
+app.get('/api/summaries/status', (c) => c.json(summaryStatus()));
+app.get('/api/listings/:id/summary', (c) => c.json(getSummary(c.req.param('id'))));
+/** Make (or remake) one summary now; takes about 10 seconds. */
+app.post('/api/listings/:id/summary', async (c) => c.json(await summarizeNow(c.req.param('id'))));
 
 app.post('/api/refresh', (c) => c.json({ started: startRefresh(), progress: getProgress() }));
 app.get('/api/refresh', (c) => c.json(getProgress()));

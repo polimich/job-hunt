@@ -224,6 +224,17 @@ const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   DROP TABLE IF EXISTS suggestions;
   DROP TABLE IF EXISTS mail_sync;
   `,
+  // 9: AI summaries of postings. A failed attempt keeps its error and hash, so it is not retried
+  // until the posting changes or the owner asks again.
+  `
+  CREATE TABLE summaries (
+    listing_id TEXT PRIMARY KEY REFERENCES listings(id) ON DELETE CASCADE,
+    hash TEXT NOT NULL,
+    data TEXT,
+    error TEXT,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

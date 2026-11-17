@@ -131,6 +131,19 @@ The first start after the switch to SQLite imported the old `data/*.json` files 
 With **Obnovovat inzeráty jednou denně** on (Settings), the server also starts a refresh by itself
 between 7:00 and 23:00 when the last one is over 20 hours old.
 
+## AI summaries
+
+Every open posting gets a short Czech summary (company, role, requirements, stack, salary,
+benefits, work mode, languages, contract, hiring process, and the AI's view: fit to your
+profile, red flags, questions to ask). They are made by Claude Haiku through the Claude Code
+CLI (`claude -p`), so they run on your Claude subscription, not on API credits: locally through
+your Claude Code login, on a server through `CLAUDE_CODE_OAUTH_TOKEN`.
+
+New postings are summarized one by one after each refresh (about 10 s each). A posting is
+summarized again only when its text changes, or when you click Přegenerovat. If the CLI is
+missing, not logged in or over its limit, the queue pauses and tries again every half hour.
+Turn it off in Settings (AI shrnutí inzerátů).
+
 ## Hosting
 
 The `Dockerfile` builds one container that serves the app and the API on port 5174. Mount a
@@ -141,6 +154,8 @@ Environment variables:
 - `APP_PASSWORD`: turns on the login page (one password, a 30-day cookie, a 15-minute lockout
   after 5 wrong tries). Without it there is no login, which is how `pnpm dev` runs.
 - `PUBLIC_HOST`: the domain, e.g. `jobs.example.com`; the request guard refuses other hosts.
+- `CLAUDE_CODE_OAUTH_TOKEN`: for the AI summaries; create it with `claude setup-token` on a machine
+  where you are logged in to Claude Code. It runs on your Claude subscription.
 - `CAREERJET_KEY`, `CAREERJET_USER_IP`, `JOOBLE_KEY`: optional, as in `.env.example`.
 
 With a login, the calendar address in Settings carries a secret token, because calendar apps

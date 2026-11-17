@@ -5,6 +5,7 @@
 import { matcher, placeOf } from '../shared/search.ts';
 import { SOURCE_LABELS, type Company, type Listing, type RefreshProgress, type RefreshRun, type Settings } from '../shared/types.ts';
 import { autoFit, extractTags } from './score.ts';
+import { queueSummaries } from './summary-queue.ts';
 import { detailFor, enabledSources } from './sources/index.ts';
 import type { Candidate, Detail } from './sources/types.ts';
 import { addRun, loadCompanies, loadListings, loadSettings, saveCompanies, saveListings, slug } from './store.ts';
@@ -163,6 +164,7 @@ export function startRefresh(searchNew = true): boolean {
   run(searchNew)
     .then(() => {
       progress = { running: false, step: 'Hotovo', done: 0, total: 0 };
+      queueSummaries();
     })
     .catch((e: unknown) => {
       progress = { running: false, step: 'Chyba', done: 0, total: 0, error: e instanceof Error ? e.message : String(e) };

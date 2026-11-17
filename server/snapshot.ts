@@ -6,6 +6,7 @@ import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { today } from '../shared/pipeline.ts';
 import { getProgress, startRefresh } from './refresh.ts';
+import { queueSummaries } from './summary-queue.ts';
 import { DATA_DIR, db, loadRuns, loadSettings } from './store.ts';
 
 export const BACKUP_DIR = join(DATA_DIR, 'backups');
@@ -49,6 +50,7 @@ function tick(): void {
   } catch (e) {
     console.warn('backup failed:', e instanceof Error ? e.message : e);
   }
+  if (!getProgress().running) queueSummaries();
   if (loadSettings().autoRefresh && !getProgress().running && refreshDue(loadRuns(1)[0]?.at)) {
     console.log('daily refresh starting');
     startRefresh();

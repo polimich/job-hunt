@@ -54,6 +54,7 @@ import StatusButtons from './StatusButtons.vue';
 import Timeline from './Timeline.vue';
 import ComposeDialog from './ComposeDialog.vue';
 import PasteMailDialog from './PasteMailDialog.vue';
+import SummaryCard from './SummaryCard.vue';
 
 const props = defineProps<{ listing: Listing }>();
 
@@ -137,6 +138,10 @@ async function remove() {
 }
 
 const parts = computed(() => highlight(props.listing.text, filters.query));
+// With a summary, the full ad text starts folded (unless a search should show its hits).
+const hasSummary = computed(() => !!db.summaries[props.listing.id]);
+const textOpen = ref(false);
+watch([() => props.listing.id, hasSummary, () => filters.query], () => (textOpen.value = !hasSummary.value || !!filters.query), { immediate: true });
 // A listing I have not acted on yet shows only the ad, not the tracking blocks.
 const tracked = computed(() => status.value !== 'new');
 const match = computed(() => skillMatch(props.listing.tags, db.settings.skills ?? []));
@@ -305,6 +310,8 @@ const meta = computed(() =>
       </div>
     </div>
 
+    <SummaryCard :listing="listing" />
+
     <!-- Note -->
     <section class="flex flex-col gap-2">
       <div class="flex items-center justify-between">
@@ -356,15 +363,24 @@ const meta = computed(() =>
       <p v-if="!listing.tags.length && listing.stack" class="text-sm">{{ listing.stack }}</p>
     </section>
 
-    <section v-if="listing.benefits" class="flex flex-col gap-2">
+    <section v-if="listing.benefits && !hasSummary" class="flex flex-col gap-2">
       <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Benefity</h3>
       <p class="text-sm">{{ listing.benefits }}</p>
     </section>
 
     <!-- Posting text -->
     <section class="flex flex-col gap-2">
-      <h3 class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Text inzerátu</h3>
-      <div class="rounded-2xl border bg-card p-5">
+      <button
+        v-if="hasSummary"
+        type="button"
+        class="flex items-center gap-1.5 self-start text-xs font-medium tracking-wide text-muted-foreground uppercase hover:text-foreground"
+        :aria-expanded="textOpen"
+        @click="textOpen = !textOpen"
+      >
+        <ChevronDownIcon :class="cn('size-3.5 transition-transform', !textOpen && '-rotate-90')" /> Celý text inzerátu
+      </button>
+      <h3 v-else class="text-xs font-medium tracking-wide text-muted-foreground uppercase">Text inzerátu</h3>
+      <div v-show="textOpen" class="rounded-2xl border bg-card p-5">
         <p v-if="!listing.text" class="text-sm text-muted-foreground">Text se nepodařilo načíst. Otevři inzerát.</p>
         <p v-else class="text-sm leading-7 whitespace-pre-wrap [overflow-wrap:anywhere]"><template v-for="(p, i) in parts" :key="i"><mark v-if="p.hit">{{ p.text }}</mark><template v-else>{{ p.text }}</template></template></p>
       </div>

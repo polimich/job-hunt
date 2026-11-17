@@ -349,6 +349,7 @@ const SHORTCUTS: [string[], string][] = [
                 <FitBadge :fit="l.fit" :auto="l.fitSource === 'auto'" size="sm" />
               </span>
               <span class="truncate text-sm text-foreground/80">{{ l.title }}</span>
+              <span v-if="db.summaries[l.id]?.oneLine" class="line-clamp-2 text-xs text-muted-foreground">{{ db.summaries[l.id]!.oneLine }}</span>
               <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 <StatusBadge v-if="statusOf(l) !== 'new'" :status="statusOf(l)" />
                 <span>{{ PLACE_LABEL[l.place] }}</span>

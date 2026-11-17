@@ -2,6 +2,8 @@
 # Mount a persistent volume at /app/data (database, documents, backups).
 FROM node:24-slim
 WORKDIR /app
+# Claude Code CLI for the AI summaries; it signs in with CLAUDE_CODE_OAUTH_TOKEN (claude setup-token).
+RUN npm install -g @anthropic-ai/claude-code@2.1.323
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile

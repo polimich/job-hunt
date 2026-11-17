@@ -6,7 +6,7 @@ import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { Company, Contact, Db, Doc, Offer, Task, Listing, ListingState, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import type { Company, Contact, Db, Doc, Offer, Task, Listing, ListingState, ListingSummary, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, DB_FILE, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS: Settings = {
   minSalary: 0,
   followUpDays: 7,
   autoRefresh: true,
+  aiSummaries: true,
   weeklyGoal: 5,
   sources: {},
   skills: [],
@@ -413,7 +414,36 @@ export function saveSettings(s: Settings): void {
 }
 
 export function loadDb(): Db {
-  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), docs: loadDocs(), state: loadState(), runs: loadRuns(), settings: loadSettings() };
+  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), docs: loadDocs(), state: loadState(), runs: loadRuns(), settings: loadSettings(), summaries: loadSummaries() };
+}
+
+// ---------- AI summaries ----------
+
+export function loadSummaries(): Record<string, ListingSummary> {
+  const rows = db().prepare('SELECT listing_id, data FROM summaries WHERE data IS NOT NULL').all() as { listing_id: string; data: string }[];
+  return Object.fromEntries(rows.map((r) => [r.listing_id, JSON.parse(r.data) as ListingSummary]));
+}
+
+/** Hash and error of every stored attempt, to decide what still needs a summary. */
+export function summaryAttempts(): Map<string, { hash: string; error: string | null }> {
+  const rows = db().prepare('SELECT listing_id, hash, error FROM summaries').all() as { listing_id: string; hash: string; error: string | null }[];
+  return new Map(rows.map((r) => [r.listing_id, { hash: r.hash, error: r.error }]));
+}
+
+export function getSummary(id: string): { summary: ListingSummary | null; error: string | null } {
+  const r = db().prepare('SELECT data, error FROM summaries WHERE listing_id = ?').get(id) as { data: string | null; error: string | null } | undefined;
+  return { summary: r?.data ? (JSON.parse(r.data) as ListingSummary) : null, error: r?.error ?? null };
+}
+
+export function saveSummary(id: string, s: ListingSummary): void {
+  db().prepare('INSERT INTO summaries (listing_id, hash, data, error, updated_at) VALUES (?, ?, ?, NULL, ?) ON CONFLICT(listing_id) DO UPDATE SET hash = excluded.hash, data = excluded.data, error = NULL, updated_at = excluded.updated_at')
+    .run(id, s.hash, JSON.stringify(s), new Date().toISOString());
+}
+
+/** Keeps an older summary, if any, next to the error. */
+export function saveSummaryError(id: string, hash: string, error: string): void {
+  db().prepare('INSERT INTO summaries (listing_id, hash, data, error, updated_at) VALUES (?, ?, NULL, ?, ?) ON CONFLICT(listing_id) DO UPDATE SET hash = excluded.hash, error = excluded.error, updated_at = excluded.updated_at')
+    .run(id, hash, error, new Date().toISOString());
 }
 
 // ---------- one-time import of the old JSON files ----------

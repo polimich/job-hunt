@@ -364,6 +364,13 @@ async function save() {
             <span class="text-xs text-muted-foreground">Když běží server, obnoví se sám mezi 7. a 23. hodinou, pokud poslední obnovení je starší než 20 hodin.</span>
           </span>
         </Label>
+        <Label class="flex items-start gap-3 font-normal">
+          <Checkbox v-model="form.aiSummaries" class="mt-0.5" />
+          <span class="flex flex-col gap-0.5">
+            <span class="font-medium">AI shrnutí inzerátů</span>
+            <span class="text-xs text-muted-foreground">Nové inzeráty po obnovení shrne Claude (model Haiku) přes tvoje předplatné. Jeden inzerát trvá asi 10 s.</span>
+          </span>
+        </Label>
       </CardContent>
     </Card>
 

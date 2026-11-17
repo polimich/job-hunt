@@ -84,6 +84,30 @@ export interface Listing {
   manual?: boolean;
 }
 
+/** AI summary of a posting (Czech), made with Claude on the owner's subscription. */
+export interface ListingSummary {
+  oneLine: string;
+  company: string;
+  role: string;
+  mustHave: string[];
+  niceToHave: string[];
+  stack: string[];
+  salary: string;
+  benefits: string[];
+  workMode: string;
+  languages: string;
+  contract: string;
+  hiring: string;
+  companyType: string;
+  fit: { matches: string[]; missing: string[]; seniority: string };
+  redFlags: string[];
+  questions: string[];
+  /** Of the inputs it was made from; a different hash means it is out of date. */
+  hash: string;
+  model: string;
+  createdAt: string;
+}
+
 export type EmailKind = 'recruiting' | 'general' | 'person';
 
 export interface CompanyEmail {
@@ -272,6 +296,8 @@ export interface Settings {
   followUpDays: number;
   /** Run a refresh by itself once a day while the server is running. */
   autoRefresh: boolean;
+  /** Summarize new postings with Claude (the owner's subscription, via Claude Code). */
+  aiSummaries: boolean;
   /** Applications I want to send per week. */
   weeklyGoal: number;
   /** My skills, matched against each posting's stack. */
@@ -291,6 +317,8 @@ export interface Db {
   state: Record<string, ListingState>;
   runs: RefreshRun[];
   settings: Settings;
+  /** AI summaries by listing id. */
+  summaries: Record<string, ListingSummary>;
 }
 
 /** What can be read from a pasted posting URL, to prefill the "add by hand" form. */
