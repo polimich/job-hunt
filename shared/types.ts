@@ -102,6 +102,13 @@ export interface ListingSummary {
   fit: { matches: string[]; missing: string[]; seniority: string };
   redFlags: string[];
   questions: string[];
+  /** Up to 3 reasons for and against, judged against my wishes and profile. */
+  pros: string[];
+  cons: string[];
+  /** 0–100: how well the posting fits my wishes and profile. */
+  match: number;
+  /** Of the wishes and profile it was judged against; '' in summaries from before the deck. */
+  profile: string;
   /** Of the inputs it was made from; a different hash means it is out of date. */
   hash: string;
   model: string;
@@ -244,9 +251,23 @@ export interface ListingState {
   docIds: string[];
   /** The offer, once there is one. */
   offer?: Offer;
+  /** Why I passed on it (a PASS_REASONS id), '' when not said. */
+  passReason: string;
+  /** When I put it off in the sorting deck ("later"), '' otherwise. Later cards come last. */
+  deferredAt: string;
   events: TrackEvent[];
   updatedAt: string;
 }
+
+/** One-tap reasons for passing on a posting in the sorting deck. */
+export const PASS_REASONS: { id: string; label: string }[] = [
+  { id: 'pay', label: 'Mzda' },
+  { id: 'stack', label: 'Stack' },
+  { id: 'place', label: 'Místo' },
+  { id: 'level', label: 'Úroveň' },
+  { id: 'company', label: 'Firma' },
+  { id: 'role', label: 'Náplň' },
+];
 
 export interface RefreshRun {
   at: string;
@@ -296,6 +317,8 @@ export interface Settings {
   followUpDays: number;
   /** Run a refresh by itself once a day while the server is running. */
   autoRefresh: boolean;
+  /** What I want from a job, in my own words. The AI judges pros, cons and match against it. */
+  wishes: string;
   /** Summarize new postings with Claude (the owner's subscription, via Claude Code). */
   aiSummaries: boolean;
   /** Applications I want to send per week. */
@@ -319,6 +342,8 @@ export interface Db {
   settings: Settings;
   /** AI summaries by listing id. */
   summaries: Record<string, ListingSummary>;
+  /** Hash of the wishes and profile right now; a summary with another `profile` is out of date. */
+  summaryProfile: string;
 }
 
 /** What can be read from a pasted posting URL, to prefill the "add by hand" form. */

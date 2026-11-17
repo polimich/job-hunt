@@ -38,7 +38,7 @@ export function daysBetween(from: string, to: string): number {
 export const newEventId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export function emptyState(): ListingState {
-  return { status: 'new', note: '', contactedAt: '', nextAt: '', nextNote: '', followUps: 0, rating: 0, labels: [], referredBy: '', docIds: [], events: [], updatedAt: '' };
+  return { status: 'new', note: '', contactedAt: '', nextAt: '', nextNote: '', followUps: 0, rating: 0, labels: [], referredBy: '', docIds: [], passReason: '', deferredAt: '', events: [], updatedAt: '' };
 }
 
 const LEGACY_STATUS: Record<string, Status> = { contacted: 'applied', rejected: 'passed' };
@@ -73,6 +73,9 @@ export function withStatus(prev: ListingState, status: Status, on: string, s: Pi
     status,
     events: [...prev.events, { id: newEventId(), kind: 'status', at: on, status, text: '' }],
     ...reminderFor(status, on, s),
+    // A decision ends "later"; the reason for passing only belongs to "passed".
+    deferredAt: '',
+    passReason: status === 'passed' ? prev.passReason : '',
   };
   // Any step forward from "applied" means they answered, so the follow-up count starts over.
   if ((RANK[status] ?? 0) > (RANK.applied ?? 0)) next.followUps = 0;

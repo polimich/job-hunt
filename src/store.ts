@@ -6,6 +6,7 @@ import { celebrate } from './lib/celebrate';
 import { STATUSES, type Company, type Contact, type Db, type Doc, type Offer, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
 import { applyFilters, DEFAULT_FILTERS, effectiveStatus, type Filters } from './filters';
 import { buildIndex, search } from './search';
+import { deckOf, shortlistOf } from '../shared/deck';
 
 const EMPTY: Db = {
   listings: [],
@@ -16,11 +17,13 @@ const EMPTY: Db = {
   state: {},
   runs: [],
   summaries: {},
+  summaryProfile: '',
   settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], location: '', radiusKm: 0, remote: true, postedWithinDays: 14, titleMustMatch: [], excludeWords: [], mpsvCategories: [], level: 'any',
     minSalary: 100000,
     followUpDays: 7,
     autoRefresh: true,
     aiSummaries: true,
+    wishes: '',
     weeklyGoal: 5,
     skills: [],
     sources: {},
@@ -111,9 +114,44 @@ export const statusCounts = computed(() => {
   return counts;
 });
 
+// ---------- sorting deck and shortlist ----------
+
+/** Set on the deck page: go through postings without waiting for their AI cards. */
+export const deckWithoutAi = ref(false);
+/** The summary queue on the server; assumed busy until the first answer, so the deck waits. */
+export const summaryQueue = ref<{ running: boolean; pending: number; blocked?: string }>({ running: true, pending: 0 });
+/** AI cards are made once summaries are on and the wishes are written. */
+export const aiCardsOn = computed(() => db.settings.aiSummaries && !!db.settings.wishes.trim());
+
+export const deck = computed(() =>
+  deckOf({
+    listings: db.listings,
+    state: db.state,
+    summaries: db.summaries,
+    profile: db.summaryProfile,
+    // Nothing is being made (AI off, queue idle or stuck): do not hold cards back.
+    includeUnready: deckWithoutAi.value || !aiCardsOn.value || !summaryQueue.value.running,
+  }),
+);
+export const shortlist = computed(() => shortlistOf({ listings: db.listings, state: db.state, summaries: db.summaries }));
+
+/** Fetch the summaries made since the page loaded, and how far the queue is. */
+export async function refreshSummaries(): Promise<void> {
+  const r = await api<{ summaries: Db['summaries']; profile: string; status: typeof summaryQueue.value }>('/summaries');
+  db.summaries = r.summaries;
+  db.summaryProfile = r.profile;
+  summaryQueue.value = r.status;
+}
+
+/** Put a card off: it comes back after the rest of the deck. */
+export async function deferListing(id: string): Promise<void> {
+  db.state[id] = { ...(db.state[id] ?? emptyState()), deferredAt: new Date().toISOString() };
+  db.state[id] = await api<ListingState>(`/state/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ later: true }) });
+}
+
 export const stateOf = (id: string): ListingState => db.state[id] ?? emptyState();
 
-type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote' | 'rating' | 'labels' | 'referredBy' | 'docIds'>> & {
+type StateChange = Partial<Pick<ListingState, 'status' | 'note' | 'contactedAt' | 'nextAt' | 'nextNote' | 'rating' | 'labels' | 'referredBy' | 'docIds' | 'passReason'>> & {
   offer?: Partial<Offer> | null;
 };
 
@@ -177,6 +215,8 @@ export async function patchListing(id: string, patch: { fit?: number; recommende
 
 export async function saveSettings(next: Settings): Promise<void> {
   db.settings = await api<Settings>('/settings', { method: 'PUT', body: JSON.stringify(next) });
+  // New wishes change which AI cards count as ready, and restart the queue.
+  await refreshSummaries().catch(() => undefined);
 }
 
 let polling: ReturnType<typeof setInterval> | undefined;

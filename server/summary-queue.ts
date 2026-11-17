@@ -1,79 +1,103 @@
 /**
- * Background queue that keeps an AI summary for every open posting that is still in play.
- * Runs after each refresh and once at start. One posting at a time, to go easy on the
- * subscription's limits. A problem that affects every call (not logged in, limit reached,
- * CLI missing) pauses the queue instead of marking each posting as failed.
+ * Background queue that keeps an AI summary (the sorting card) for every open posting that is
+ * still in play. Runs after each refresh, after the wishes change, and every half hour. Two
+ * postings at a time, best match first, so the best cards are ready first. A problem that
+ * affects every call (not logged in, limit reached, CLI missing) pauses the queue instead of
+ * marking each posting as failed.
  */
 import { ENDINGS } from '../shared/pipeline.ts';
-import type { Listing } from '../shared/types.ts';
+import { PASS_REASONS, type Listing, type ListingState, type Settings } from '../shared/types.ts';
 import { getSummary, loadListings, loadSettings, loadState, saveSummary, saveSummaryError, summaryAttempts } from './store.ts';
-import { summarize, summaryHash } from './summary.ts';
+import { profileHash, summarize, summaryHash, type Rejection } from './summary.ts';
 
 export interface SummaryStatus {
   running: boolean;
   pending: number;
-  current?: string;
   /** Why the queue stopped, when it affects all postings. */
   blocked?: string;
 }
 
-let status: SummaryStatus = { running: false, pending: 0 };
+const WORKERS = 2;
+let active = 0;
+let blocked: string | undefined;
 const queue: string[] = [];
 
-export const summaryStatus = (): SummaryStatus => ({ ...status, pending: queue.length });
+export const summaryStatus = (): SummaryStatus => ({ running: active > 0, pending: queue.length + active, blocked });
 
 const GLOBAL = /not logged in|log ?in|authenticat|oauth|token|credit|usage limit|rate limit|limit reached|quota|overloaded|401|403|429|529|není nainstalovaný/i;
 
-/** Postings worth summarizing: open, not finished, and without an up-to-date attempt. */
-export function needingSummary(listings: Listing[], attempts: ReturnType<typeof summaryAttempts>, state: ReturnType<typeof loadState>): Listing[] {
+type Attempts = ReturnType<typeof summaryAttempts>;
+type States = Record<string, ListingState>;
+
+/**
+ * Postings worth summarizing: open, not finished, and either never tried, changed since, or
+ * (while I have not decided on them) judged against older wishes.
+ */
+export function needingSummary(listings: Listing[], attempts: Attempts, state: States, profile: string): Listing[] {
   return listings.filter((l) => {
     if (!l.open || !l.text.trim()) return false;
-    const st = state[l.id]?.status;
-    if (st && ENDINGS.includes(st)) return false;
-    return attempts.get(l.id)?.hash !== summaryHash(l);
+    const st = state[l.id]?.status ?? 'new';
+    if (ENDINGS.includes(st)) return false;
+    const a = attempts.get(l.id);
+    if (!a) return true;
+    const [posting, judged = ''] = a.hash.split(':');
+    if (posting !== summaryHash(l)) return true;
+    return (st === 'new' || st === 'interested') && judged !== profile;
   });
 }
 
+/** The last few postings I passed on with a reason, as examples of what I do not want. */
+export function recentRejections(listings: Listing[], state: States, limit = 8): Rejection[] {
+  const byId = new Map(listings.map((l) => [l.id, l]));
+  return Object.entries(state)
+    .filter(([id, st]) => st.status === 'passed' && st.passReason && byId.has(id))
+    .sort((a, b) => b[1].updatedAt.localeCompare(a[1].updatedAt))
+    .slice(0, limit)
+    .map(([id, st]) => {
+      const l = byId.get(id)!;
+      return { title: l.title, company: l.company, reason: PASS_REASONS.find((r) => r.id === st.passReason)?.label ?? st.passReason };
+    });
+}
+
+/** Summaries start once the wishes are written, so the first batch is not made twice. */
+export const summariesOn = (s: Settings): boolean => s.aiSummaries && !!s.wishes.trim();
+
 export function queueSummaries(): void {
-  if (!loadSettings().aiSummaries) return;
-  const todo = needingSummary(loadListings(), summaryAttempts(), loadState())
-    .sort((a, b) => b.firstSeen.localeCompare(a.firstSeen))
-    .map((l) => l.id)
-    .filter((id) => !queue.includes(id));
+  const settings = loadSettings();
+  if (!summariesOn(settings)) return;
+  const todo = needingSummary(loadListings(), summaryAttempts(), loadState(), profileHash(settings))
+    .sort((a, b) => b.fit - a.fit || b.firstSeen.localeCompare(a.firstSeen))
+    .map((l) => l.id);
+  // Replace the queue: what was waiting may be out of date (wishes changed, posting closed).
+  queue.length = 0;
   queue.push(...todo);
-  status.blocked = undefined; // try again: the login or the limit may be fine by now
-  void work();
+  blocked = undefined; // try again: the login or the limit may be fine by now
+  for (let i = active; i < WORKERS; i++) void work();
 }
 
 async function work(): Promise<void> {
-  if (status.running) return;
-  status.running = true;
+  active++;
   try {
-    while (queue.length && !status.blocked) {
-      const id = queue[0]!;
+    while (queue.length && !blocked) {
+      const id = queue.shift()!;
       const l = loadListings().find((x) => x.id === id);
-      if (!l) {
-        queue.shift();
-        continue;
-      }
-      status.current = l.title;
+      if (!l) continue;
+      const settings = loadSettings();
       try {
-        saveSummary(id, await summarize(l, loadSettings()));
-        queue.shift();
+        saveSummary(id, await summarize(l, settings, recentRejections(loadListings(), loadState())));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (GLOBAL.test(msg)) {
-          status.blocked = msg;
+          queue.unshift(id);
+          blocked = msg;
           console.warn('summaries paused:', msg);
         } else {
-          saveSummaryError(id, summaryHash(l), msg);
-          queue.shift();
+          saveSummaryError(id, `${summaryHash(l)}:${profileHash(settings)}`, msg);
         }
       }
     }
   } finally {
-    status.running = false;
-    status.current = undefined;
+    active--;
   }
 }
 
@@ -81,12 +105,13 @@ async function work(): Promise<void> {
 export async function summarizeNow(id: string): Promise<ReturnType<typeof getSummary>> {
   const l = loadListings().find((x) => x.id === id);
   if (!l) throw new Error('Inzerát nenalezen.');
+  const settings = loadSettings();
   try {
-    saveSummary(id, await summarize(l, loadSettings()));
-    status.blocked = undefined;
+    saveSummary(id, await summarize(l, settings, recentRejections(loadListings(), loadState())));
+    blocked = undefined;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    saveSummaryError(id, summaryHash(l), msg);
+    saveSummaryError(id, `${summaryHash(l)}:${profileHash(settings)}`, msg);
   }
   return getSummary(id);
 }

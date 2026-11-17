@@ -6,7 +6,9 @@ import {
   Building2Icon,
   ChartColumnIcon,
   HandshakeIcon,
+  HeartIcon,
   HistoryIcon,
+  LayersIcon,
   LayoutListIcon,
   PlusIcon,
   SquareKanbanIcon,
@@ -34,7 +36,7 @@ import { statusMeta } from '@/lib/status';
 import { colorMode } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import AddListingDialog from './components/AddListingDialog.vue';
-import { addOpen, db, due, dueTasks, filters, offers, load, loaded, loadError, progress, resumeRefresh, startRefresh, statusCounts } from './store';
+import { addOpen, db, deck, shortlist, due, dueTasks, filters, offers, load, loaded, loadError, progress, resumeRefresh, startRefresh, statusCounts } from './store';
 import { formatDateTime } from './format';
 
 onMounted(async () => {
@@ -47,10 +49,13 @@ const router = useRouter();
 
 const lastRun = computed(() => db.runs[0]);
 const openCount = computed(() => db.listings.filter((l) => l.open).length);
+const toSort = computed(() => deck.value.cards.length + deck.value.waiting);
 const pct = computed(() => (progress.value.total ? Math.round((progress.value.done / progress.value.total) * 100) : 0));
 
 const nav = computed(() => [
-  { to: '/', label: 'Dnes', icon: SunriseIcon, count: due.value.length + dueTasks.value.length || undefined, alert: due.value.length + dueTasks.value.length > 0, active: route.path === '/' },
+  { to: '/tridit', label: 'Třídit', icon: LayersIcon, count: toSort.value || undefined, alert: false, active: route.path.startsWith('/tridit') },
+  { to: '/vyber', label: 'Výběr', icon: HeartIcon, count: shortlist.value.length || undefined, alert: false, active: route.path.startsWith('/vyber') },
+  { to: '/dnes', label: 'Dnes', icon: SunriseIcon, count: due.value.length + dueTasks.value.length || undefined, alert: due.value.length + dueTasks.value.length > 0, active: route.path.startsWith('/dnes') },
   { to: '/pozice', label: 'Pozice', icon: LayoutListIcon, count: openCount.value, active: route.path.startsWith('/pozice') },
   { to: '/tabule', label: 'Tabule', icon: SquareKanbanIcon, count: undefined, active: route.path.startsWith('/tabule') },
   { to: '/prehled', label: 'Přehled', icon: ChartColumnIcon, count: undefined, active: route.path.startsWith('/prehled') },

@@ -6,7 +6,7 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { addDays, cleanLabels, emptyOffer, emptyState, ENDINGS, followedUp, newEventId, normalizeState, RANK, today, withEvent, withoutEvent, withStatus } from '../shared/pipeline.ts';
-import { INTERVIEW_ROUNDS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type EmailTemplateKind, type Level, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
+import { INTERVIEW_ROUNDS, PASS_REASONS, STATUSES, type Contact, type Doc, type Offer, type Task, type ListingState, type EmailTemplateKind, type Level, type ManualInput, type Settings, type Status, type TrackEvent } from '../shared/types.ts';
 import { placeOf } from '../shared/search.ts';
 import { manualListing, preview } from './manual.ts';
 import { toCsv } from './export.ts';
@@ -17,19 +17,20 @@ import { extname } from 'node:path';
 import { backup, listBackups, startDailyJobs } from './snapshot.ts';
 import { guard } from './guard.ts';
 import { auth, calendarToken } from './auth.ts';
-import { summarizeNow, summaryStatus } from './summary-queue.ts';
+import { queueSummaries, summarizeNow, summaryStatus } from './summary-queue.ts';
+import { profileHash } from './summary.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, getSummary, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, getSummary, loadSummaries, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
 
 const port = Number(process.env.PORT ?? 5174);
 const app = new Hono();
 app.use('*', guard(port));
 app.use('*', auth(process.env.APP_PASSWORD || undefined));
 
-app.get('/api/db', (c) => c.json(loadDb()));
+app.get('/api/db', (c) => c.json({ ...loadDb(), summaryProfile: profileHash(loadSettings()) }));
 
 /** Fields of a state that can be set directly; history goes through the event routes. */
-type StateChange = Partial<{ status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string; rating: number; labels: string[]; referredBy: string; docIds: string[]; offer: Partial<Offer> | null }>;
+type StateChange = Partial<{ passReason: string; later: boolean; status: Status; note: string; contactedAt: string; nextAt: string; nextNote: string; rating: number; labels: string[]; referredBy: string; docIds: string[]; offer: Partial<Offer> | null }>;
 
 function updateState(id: string, change: (prev: ListingState, on: string, settings: Settings) => ListingState): ListingState {
   const next = { ...change(getState(id) ?? emptyState(), today(), loadSettings()), updatedAt: new Date().toISOString() };
@@ -64,6 +65,9 @@ app.put('/api/state/:id', async (c) => {
     updateState(c.req.param('id'), (prev, on, settings) => {
       let next = patch.status ? withStatus(prev, patch.status, on, settings) : prev;
       if (typeof patch.note === 'string') next = { ...next, note: patch.note };
+      // Sorting deck: why I passed, and "later" (true puts the card last, false takes that back).
+      if (typeof patch.passReason === 'string' && next.status === 'passed') next = { ...next, passReason: PASS_REASONS.some((r) => r.id === patch.passReason) ? patch.passReason : '' };
+      if (typeof patch.later === 'boolean') next = { ...next, deferredAt: patch.later && next.status === 'new' ? new Date().toISOString() : '' };
       if (typeof patch.contactedAt === 'string') next = { ...next, contactedAt: patch.contactedAt };
       if (typeof patch.nextAt === 'string') next = { ...next, nextAt: patch.nextAt, nextNote: patch.nextAt ? (patch.nextNote ?? next.nextNote) : '' };
       else if (typeof patch.nextNote === 'string') next = { ...next, nextNote: patch.nextNote };
@@ -204,6 +208,7 @@ app.put('/api/settings', async (c) => {
   next.followUpDays = Math.min(Math.max(Math.round(Number(next.followUpDays) || 7), 1), 60);
   next.autoRefresh = next.autoRefresh !== false;
   next.aiSummaries = next.aiSummaries !== false;
+  next.wishes = String(next.wishes ?? '').trim().slice(0, 3000);
   next.weeklyGoal = Math.min(Math.max(Math.round(Number(next.weeklyGoal) || 5), 1), 50);
   next.skills = words(next.skills, 60);
   saveSettings(next);
@@ -213,6 +218,8 @@ app.put('/api/settings', async (c) => {
     for (const l of listings) if (!l.manual) l.place = placeOf(l.location, l.mode === 'neuvedeno' ? '' : l.mode, next.location);
     saveListings(listings);
   }
+  // New wishes or profile: cards I have not decided on are judged again.
+  if (profileHash(next) !== profileHash(prev) || next.aiSummaries !== prev.aiSummaries) queueSummaries();
   return c.json(next);
 });
 
@@ -390,6 +397,8 @@ app.post('/api/restore', async (c) => {
 app.post('/api/backups', (c) => c.json({ file: backup(today(), true) }));
 
 app.get('/api/summaries/status', (c) => c.json(summaryStatus()));
+/** All summaries with the queue's progress; the sorting deck polls this while cards are made. */
+app.get('/api/summaries', (c) => c.json({ summaries: loadSummaries(), profile: profileHash(loadSettings()), status: summaryStatus() }));
 app.get('/api/listings/:id/summary', (c) => c.json(getSummary(c.req.param('id'))));
 /** Make (or remake) one summary now; takes about 10 seconds. */
 app.post('/api/listings/:id/summary', async (c) => c.json(await summarizeNow(c.req.param('id'))));

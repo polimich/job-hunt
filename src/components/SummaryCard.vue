@@ -121,7 +121,9 @@ const unknown = computed(() => rows.value.filter((r) => missing(r.value)).map((r
       </dl>
 
       <div class="flex flex-col gap-3 rounded-xl bg-muted/50 p-4 text-sm">
-        <p class="text-xs text-muted-foreground">Názor AI vůči tvému profilu</p>
+        <p class="text-xs text-muted-foreground">Názor AI vůči tomu, co chceš a umíš<template v-if="summary.profile"> · shoda {{ summary.match }} %</template></p>
+        <p v-if="summary.pros.length"><span class="font-medium text-success">Pro:</span> {{ summary.pros.join(' · ') }}</p>
+        <p v-if="summary.cons.length"><span class="font-medium text-warning">Proti:</span> {{ summary.cons.join(' · ') }}</p>
         <p v-if="summary.fit.matches.length"><span class="font-medium text-success">Sedí:</span> {{ summary.fit.matches.join(', ') }}</p>
         <p v-if="summary.fit.missing.length"><span class="font-medium text-warning">Chybí:</span> {{ summary.fit.missing.join(', ') }}</p>
         <p v-if="!missing(summary.fit.seniority)"><span class="font-medium">Úroveň:</span> {{ summary.fit.seniority }}</p>

@@ -3,8 +3,8 @@ import { emptyState, withStatus } from '../shared/pipeline';
 import type { Listing } from '../shared/types';
 import { openDb } from '../server/db';
 import * as store from '../server/store';
-import { normalizeSummary, prompt, runClaude, summaryHash } from '../server/summary';
-import { needingSummary } from '../server/summary-queue';
+import { normalizeSummary, profileHash, prompt, runClaude, summaryHash } from '../server/summary';
+import { needingSummary, recentRejections, summariesOn } from '../server/summary-queue';
 
 const listing = (over: Partial<Listing> = {}): Listing => ({
   id: 'a', companyId: 'co', company: 'Co', title: 'Frontend', url: 'https://x', source: 'other', sourceId: 'a', location: 'Brno',
@@ -34,26 +34,53 @@ describe('summary output', () => {
 });
 
 describe('summary storage and queue', () => {
+  const summary = (over = {}) => ({ ...normalizeSummary({ oneLine: 'x', pros: ['a', 'b', 'c', 'd'], match: 140 }), hash: 'h1', profile: 'p1', model: 'haiku', createdAt: '2026-11-17T10:00:00Z', ...over });
+
+  it('caps pros and the match', () => {
+    expect(summary().pros).toEqual(['a', 'b', 'c']);
+    expect(summary().match).toBe(100);
+  });
   it('stores a summary, and an error without losing the older summary', () => {
     store.saveListings([listing()]);
-    const s = { ...normalizeSummary({ oneLine: 'x' }), hash: 'h1', model: 'haiku', createdAt: '2026-11-17T10:00:00Z' };
-    store.saveSummary('a', s);
+    store.saveSummary('a', summary());
     expect(store.loadDb().summaries.a!.oneLine).toBe('x');
-    store.saveSummaryError('a', 'h2', 'boom');
-    expect(store.getSummary('a')).toEqual({ summary: s, error: 'boom' });
+    expect(store.summaryAttempts().get('a')!.hash).toBe('h1:p1');
+    store.saveSummaryError('a', 'h2:p1', 'boom');
+    expect(store.getSummary('a')).toEqual({ summary: summary(), error: 'boom' });
   });
-  it('picks open, unfinished postings whose text changed since the last attempt', () => {
+  it('picks open, unfinished postings that changed, or were judged against older wishes while undecided', () => {
+    const S = { followUpDays: 7 };
     const fresh = listing({ id: 'fresh' });
     const done = listing({ id: 'done' });
     const changed = listing({ id: 'changed' });
+    const oldWishes = listing({ id: 'oldWishes' });
+    const oldWishesApplied = listing({ id: 'oldWishesApplied' });
     const closed = listing({ id: 'closed', open: false });
     const rejected = listing({ id: 'rejected' });
     const empty = listing({ id: 'empty', text: '' });
-    store.saveListings([fresh, done, changed, closed, rejected, empty]);
-    store.saveSummaryError('done', summaryHash(done), 'x');
-    store.saveSummaryError('changed', 'old', 'x');
-    store.putState('rejected', withStatus(emptyState(), 'rejected', '2026-11-16', { followUpDays: 7 }));
-    const ids = needingSummary(store.loadListings(), store.summaryAttempts(), store.loadState()).map((l) => l.id);
-    expect(ids.sort()).toEqual(['changed', 'fresh']);
+    store.saveListings([fresh, done, changed, oldWishes, oldWishesApplied, closed, rejected, empty]);
+    store.saveSummaryError('done', `${summaryHash(done)}:now`, 'x');
+    store.saveSummaryError('changed', 'old:now', 'x');
+    store.saveSummaryError('oldWishes', `${summaryHash(oldWishes)}:before`, 'x');
+    store.saveSummaryError('oldWishesApplied', summaryHash(oldWishesApplied), 'x'); // from before the deck: no profile part
+    store.putState('oldWishesApplied', withStatus(emptyState(), 'applied', '2026-11-16', S));
+    store.putState('rejected', withStatus(emptyState(), 'rejected', '2026-11-16', S));
+    const ids = needingSummary(store.loadListings(), store.summaryAttempts(), store.loadState(), 'now').map((l) => l.id);
+    expect(ids.sort()).toEqual(['changed', 'fresh', 'oldWishes']);
+  });
+  it('waits for the wishes, and changes the profile hash with them', () => {
+    const s = store.loadSettings();
+    expect(summariesOn(s)).toBe(false);
+    expect(summariesOn({ ...s, wishes: 'React, remote' })).toBe(true);
+    expect(summariesOn({ ...s, wishes: 'React', aiSummaries: false })).toBe(false);
+    expect(profileHash({ ...s, wishes: 'a' })).not.toBe(profileHash({ ...s, wishes: 'b' }));
+  });
+  it('gives the model my wishes and what I recently passed on', () => {
+    const passed = { ...withStatus(emptyState(), 'passed', '2026-11-16', { followUpDays: 7 }), passReason: 'stack', updatedAt: '2026-11-16T10:00:00Z' };
+    const rejected = recentRejections([listing({ id: 'java', title: 'Java Developer' })], { java: passed });
+    expect(rejected).toEqual([{ title: 'Java Developer', company: 'Co', reason: 'Stack' }]);
+    const p = prompt(listing(), { ...store.loadSettings(), wishes: 'Chci React, ne Javu.' }, rejected);
+    expect(p).toContain('Chci React, ne Javu.');
+    expect(p).toContain('- Java Developer (Co): Stack');
   });
 });

@@ -42,6 +42,7 @@ const DEFAULT_SETTINGS: Settings = {
   followUpDays: 7,
   autoRefresh: true,
   aiSummaries: true,
+  wishes: '',
   weeklyGoal: 5,
   sources: {},
   skills: [],
@@ -235,6 +236,8 @@ const toState = (r: Row, events: TrackEvent[]): ListingState => ({
   referredBy: (r.referred_by as string) ?? '',
   docIds: json<string[]>(r.doc_ids, []),
   ...(r.offer ? { offer: json<Offer>(r.offer, undefined as never) } : {}),
+  passReason: (r.pass_reason as string) ?? '',
+  deferredAt: (r.deferred_at as string) ?? '',
   events,
   updatedAt: r.updated_at as string,
 });
@@ -264,13 +267,14 @@ export function putState(id: string, st: ListingState): void {
 function writeState(id: string, st: ListingState): void {
   db()
     .prepare(
-      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, rating, labels, referred_by, doc_ids, offer, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO state (listing_id, status, note, contacted_at, next_at, next_note, follow_ups, rating, labels, referred_by, doc_ids, offer, pass_reason, deferred_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(listing_id) DO UPDATE SET status = excluded.status, note = excluded.note, contacted_at = excluded.contacted_at,
          next_at = excluded.next_at, next_note = excluded.next_note, follow_ups = excluded.follow_ups, rating = excluded.rating,
-         labels = excluded.labels, referred_by = excluded.referred_by, doc_ids = excluded.doc_ids, offer = excluded.offer, updated_at = excluded.updated_at`,
+         labels = excluded.labels, referred_by = excluded.referred_by, doc_ids = excluded.doc_ids, offer = excluded.offer,
+         pass_reason = excluded.pass_reason, deferred_at = excluded.deferred_at, updated_at = excluded.updated_at`,
     )
-    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.rating ?? 0, JSON.stringify(st.labels ?? []), st.referredBy ?? '', JSON.stringify(st.docIds ?? []), st.offer ? JSON.stringify(st.offer) : null, st.updatedAt);
+    .run(id, st.status, st.note, st.contactedAt, st.nextAt, st.nextNote, st.followUps, st.rating ?? 0, JSON.stringify(st.labels ?? []), st.referredBy ?? '', JSON.stringify(st.docIds ?? []), st.offer ? JSON.stringify(st.offer) : null, st.passReason ?? '', st.deferredAt ?? '', st.updatedAt);
   // Events are append-mostly; rewriting this one application's few rows keeps the order exact.
   db().prepare('DELETE FROM events WHERE listing_id = ?').run(id);
   const insert = db().prepare('INSERT INTO events (id, listing_id, kind, at, time, status, contact_id, round, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
@@ -414,14 +418,17 @@ export function saveSettings(s: Settings): void {
 }
 
 export function loadDb(): Db {
-  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), docs: loadDocs(), state: loadState(), runs: loadRuns(), settings: loadSettings(), summaries: loadSummaries() };
+  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), docs: loadDocs(), state: loadState(), runs: loadRuns(), settings: loadSettings(), summaries: loadSummaries(), summaryProfile: '' };
 }
 
 // ---------- AI summaries ----------
 
+/** Summaries from before the deck have no pros, cons, match or profile. */
+const storedSummary = (data: string): ListingSummary => ({ pros: [], cons: [], match: 0, profile: '', ...(JSON.parse(data) as Partial<ListingSummary>) }) as ListingSummary;
+
 export function loadSummaries(): Record<string, ListingSummary> {
   const rows = db().prepare('SELECT listing_id, data FROM summaries WHERE data IS NOT NULL').all() as { listing_id: string; data: string }[];
-  return Object.fromEntries(rows.map((r) => [r.listing_id, JSON.parse(r.data) as ListingSummary]));
+  return Object.fromEntries(rows.map((r) => [r.listing_id, storedSummary(r.data)]));
 }
 
 /** Hash and error of every stored attempt, to decide what still needs a summary. */
@@ -432,12 +439,13 @@ export function summaryAttempts(): Map<string, { hash: string; error: string | n
 
 export function getSummary(id: string): { summary: ListingSummary | null; error: string | null } {
   const r = db().prepare('SELECT data, error FROM summaries WHERE listing_id = ?').get(id) as { data: string | null; error: string | null } | undefined;
-  return { summary: r?.data ? (JSON.parse(r.data) as ListingSummary) : null, error: r?.error ?? null };
+  return { summary: r?.data ? storedSummary(r.data) : null, error: r?.error ?? null };
 }
 
+/** The stored attempt hash is "<posting>:<profile>", so either changing can be told apart. */
 export function saveSummary(id: string, s: ListingSummary): void {
   db().prepare('INSERT INTO summaries (listing_id, hash, data, error, updated_at) VALUES (?, ?, ?, NULL, ?) ON CONFLICT(listing_id) DO UPDATE SET hash = excluded.hash, data = excluded.data, error = NULL, updated_at = excluded.updated_at')
-    .run(id, s.hash, JSON.stringify(s), new Date().toISOString());
+    .run(id, `${s.hash}:${s.profile}`, JSON.stringify(s), new Date().toISOString());
 }
 
 /** Keeps an older summary, if any, next to the error. */

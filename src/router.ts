@@ -3,7 +3,10 @@ import { createRouter, createWebHistory } from 'vue-router';
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', name: 'today', component: () => import('./pages/TodayPage.vue') },
+    { path: '/', name: 'start', component: () => import('./pages/StartPage.vue') },
+    { path: '/tridit', name: 'deck', component: () => import('./pages/DeckPage.vue') },
+    { path: '/vyber', name: 'shortlist', component: () => import('./pages/ShortlistPage.vue') },
+    { path: '/dnes', name: 'today', component: () => import('./pages/TodayPage.vue') },
     { path: '/pozice', name: 'list', component: () => import('./pages/ListPage.vue') },
     { path: '/tabule', name: 'board', component: () => import('./pages/BoardPage.vue') },
     { path: '/prehled', name: 'stats', component: () => import('./pages/StatsPage.vue') },

@@ -131,6 +131,27 @@ The first start after the switch to SQLite imported the old `data/*.json` files 
 With **Obnovovat inzeráty jednou denně** on (Settings), the server also starts a refresh by itself
 between 7:00 and 23:00 when the last one is over 20 hours old.
 
+## The flow: sort, shortlist, follow up
+
+Opening the app lands on the first step that has something waiting.
+
+1. **Třídit** (`/tridit`): a deck of cards, one per new posting, best match first. Each card
+   shows the salary, place, work mode, a one-line summary, up to three pros and cons, the stack,
+   key requirements and red flags. Swipe or use the keys: right = interested, left = not for me
+   (then one tap says why: pay, stack, place, level, company, role), up = top pick (interested,
+   five stars), down = later (comes back last). Tap or Enter opens the full detail, Z undoes.
+   On touch screens up and down scroll the card, so top pick and later are buttons there.
+2. **Výběr** (`/vyber`): what you said yes to, top picks first. Read the full summary, add a
+   note, then write the e-mail or open the ad and mark it as sent. Sent ones move on to the
+   usual tracking (Dnes, Tabule).
+3. **Dnes** (`/dnes`): follow-ups, interviews and tasks, as before.
+
+The pros, cons and match on the cards are the AI's, judged against "Co od práce chci" in
+Settings (free text), your skills, level, town and minimum salary, and the last few postings
+you passed on with a reason. Cards are made in the background once the wishes are written;
+changing them remakes the cards you have not decided on. Without AI the deck still works, with
+the basic facts only.
+
 ## AI summaries
 
 Every open posting gets a short Czech summary (company, role, requirements, stack, salary,
@@ -139,7 +160,8 @@ profile, red flags, questions to ask). They are made by Claude Haiku through the
 CLI (`claude -p`), so they run on your Claude subscription, not on API credits: locally through
 your Claude Code login, on a server through `CLAUDE_CODE_OAUTH_TOKEN`.
 
-New postings are summarized one by one after each refresh (about 10 s each). A posting is
+New postings are summarized two at a time after each refresh (about 10 s each), once
+"Co od práce chci" is filled in. A posting is
 summarized again only when its text changes, or when you click Přegenerovat. If the CLI is
 missing, not logged in or over its limit, the queue pauses and tries again every half hour.
 Turn it off in Settings (AI shrnutí inzerátů).

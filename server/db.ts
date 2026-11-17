@@ -235,6 +235,11 @@ const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  // 10: the sorting deck: why I passed on a posting, and "later".
+  `
+  ALTER TABLE state ADD COLUMN pass_reason TEXT NOT NULL DEFAULT '';
+  ALTER TABLE state ADD COLUMN deferred_at TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

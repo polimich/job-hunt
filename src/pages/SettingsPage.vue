@@ -312,6 +312,11 @@ async function save() {
       </CardHeader>
       <CardContent class="flex flex-col gap-5">
         <div class="flex flex-col gap-2">
+          <Label for="wishes">Co od práce chci</Label>
+          <Textarea id="wishes" v-model="form.wishes" rows="5" placeholder="Např.: frontend v Reactu, produktová firma, hybrid nejvýš 2 dny, aspoň 90 000 Kč. Nechci agentury ani on-call." class="leading-relaxed" />
+          <p class="text-xs text-muted-foreground">Vlastními slovy. AI podle toho píše pro a proti na kartách ve Třídit a řadí je od nejlepší shody. Po změně se karty, o kterých jsi ještě nerozhodl, připraví znovu.</p>
+        </div>
+        <div class="flex flex-col gap-2">
           <Label for="skills">Moje dovednosti</Label>
           <Input id="skills" v-model="skills" placeholder="např. React, TypeScript, Figma, účetnictví" />
           <p class="text-xs text-muted-foreground">Oddělené čárkou. V detailu pozice uvidíš, kolik procent stacku umíš a co chybí; podle nich se odhaduje i shoda nových inzerátů.</p>
@@ -368,7 +373,7 @@ async function save() {
           <Checkbox v-model="form.aiSummaries" class="mt-0.5" />
           <span class="flex flex-col gap-0.5">
             <span class="font-medium">AI shrnutí inzerátů</span>
-            <span class="text-xs text-muted-foreground">Nové inzeráty po obnovení shrne Claude (model Haiku) přes tvoje předplatné. Jeden inzerát trvá asi 10 s.</span>
+            <span class="text-xs text-muted-foreground">Nové inzeráty po obnovení shrne Claude (model Haiku) přes tvoje předplatné a připraví z nich karty do Třídit. Začne, jakmile vyplníš „Co od práce chci“.</span>
           </span>
         </Label>
       </CardContent>
