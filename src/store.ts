@@ -22,7 +22,7 @@ const EMPTY: Db = {
   kitErrors: {},
   research: {},
   settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], location: '', radiusKm: 0, remote: true, postedWithinDays: 14, titleMustMatch: [], excludeWords: [], mpsvCategories: [], level: 'any',
-    minSalary: 100000,
+    minSalary: 0,
     followUpDays: 7,
     autoRefresh: true,
     aiSummaries: true,

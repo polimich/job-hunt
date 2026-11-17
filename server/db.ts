@@ -42,7 +42,6 @@ function searchProfile(db: DatabaseSync): void {
   );
   set('mpsvCategories', ['251']);
   set('level', 'medior');
-  keep('minSalary', 100000);
   keep('skills', ['React', 'TypeScript', 'JavaScript', 'Vue', 'Next.js', 'Node', 'HTML', 'CSS', 'Tailwind', 'REST', 'Git']);
   db.prepare("DELETE FROM settings WHERE key IN ('vueKeywords', 'excludeTitle')").run();
 }
