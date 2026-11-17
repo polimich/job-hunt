@@ -21,11 +21,7 @@ type Move = 'yes' | 'no' | 'top' | 'later';
 
 // The card on top stays put while better ones arrive from the queue behind it.
 const pinned = ref<string>();
-// While the very first cards are being made, wait for a few, so the first one shown is a good one.
-const FIRST_HAND = 5;
-const started = ref(false);
-watch(() => [deck.value.cards.length, deck.value.waiting], ([ready, waiting]) => (started.value ||= ready! >= FIRST_HAND || !waiting), { immediate: true });
-const top = computed(() => (started.value ? (deck.value.cards.find((l) => l.id === pinned.value) ?? deck.value.cards[0]) : undefined));
+const top = computed(() => deck.value.cards.find((l) => l.id === pinned.value) ?? deck.value.cards[0]);
 const next = computed(() => deck.value.cards.find((l) => l.id !== top.value?.id));
 watch(top, (l) => (pinned.value = l?.id), { immediate: true });
 
@@ -39,8 +35,8 @@ let ticks = 0;
 const poll = () => refreshSummaries().catch(() => (summaryQueue.value = { running: false, pending: 0 }));
 onMounted(() => {
   void poll();
-  // Every 6 s while cards are being made, otherwise once a minute.
-  timer = setInterval(() => (summaryQueue.value.running || ++ticks % 10 === 0) && void poll(), 6000);
+  // Every 3 s while cards are being made, otherwise once a minute.
+  timer = setInterval(() => (summaryQueue.value.running || ++ticks % 20 === 0) && void poll(), 3000);
 });
 onBeforeUnmount(() => clearInterval(timer));
 
@@ -296,7 +292,7 @@ const STAMP: Record<Move, { label: string; cls: string }> = {
       <RefreshCwIcon class="size-8 animate-spin text-muted-foreground" />
       <div class="flex flex-col gap-1">
         <h2 class="text-lg font-bold">Připravuji karty</h2>
-        <p class="text-sm text-muted-foreground">Hotovo {{ deck.cards.length }} z {{ undecided }}. Karty se tu objeví samy, jakmile jich pár bude, nejlepší shody jako první.</p>
+        <p class="text-sm text-muted-foreground">První karta bude za pár vteřin; další se připravují na pozadí, zatímco třídíš.</p>
       </div>
       <Button variant="ghost" class="text-muted-foreground" @click="deckWithoutAi = true">Nečekat, třídit bez AI</Button>
     </section>

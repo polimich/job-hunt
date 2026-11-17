@@ -160,8 +160,10 @@ profile, red flags, questions to ask). They are made by Claude Haiku through the
 CLI (`claude -p`), so they run on your Claude subscription, not on API credits: locally through
 your Claude Code login, on a server through `CLAUDE_CODE_OAUTH_TOKEN`.
 
-New postings are summarized two at a time after each refresh (about 10 s each), once
-"Co od práce chci" is filled in. A posting is
+New postings are summarized three at a time after each refresh (about 15 s each), once
+"Co od práce chci" is filled in. When only the wishes change, postings that already have a
+summary are just judged again (pros, cons, match: about 7 s each), and the deck shows cards
+as soon as the first one is ready. A posting is
 summarized again only when its text changes, or when you click Přegenerovat. If the CLI is
 missing, not logged in or over its limit, the queue pauses and tries again every half hour.
 Turn it off in Settings (AI shrnutí inzerátů).

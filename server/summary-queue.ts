@@ -1,6 +1,6 @@
 /**
  * Background queue that keeps an AI summary (the sorting card) for every open posting that is
- * still in play. Runs after each refresh, after the wishes change, and every half hour. Two
+ * still in play. Runs after each refresh, after the wishes change, and every half hour. Three
  * postings at a time, best match first, so the best cards are ready first. A problem that
  * affects every call (not logged in, limit reached, CLI missing) pauses the queue instead of
  * marking each posting as failed.
@@ -17,7 +17,7 @@ export interface SummaryStatus {
   blocked?: string;
 }
 
-const WORKERS = 2;
+const WORKERS = 3;
 let active = 0;
 let blocked: string | undefined;
 const queue: string[] = [];
@@ -65,8 +65,13 @@ export const summariesOn = (s: Settings): boolean => s.aiSummaries && !!s.wishes
 export function queueSummaries(): void {
   const settings = loadSettings();
   if (!summariesOn(settings)) return;
-  const todo = needingSummary(loadListings(), summaryAttempts(), loadState(), profileHash(settings))
-    .sort((a, b) => b.fit - a.fit || b.firstSeen.localeCompare(a.firstSeen))
+  const attempts = summaryAttempts();
+  const state = loadState();
+  // Cards for the deck first; among them the quick ones (already summarized, only to be judged
+  // again), then by keyword fit.
+  const rank = (l: Listing) => ((state[l.id]?.status ?? 'new') === 'new' ? 2 : 0) + (attempts.get(l.id)?.hash.split(':')[0] === summaryHash(l) ? 1 : 0);
+  const todo = needingSummary(loadListings(), attempts, state, profileHash(settings))
+    .sort((a, b) => rank(b) - rank(a) || b.fit - a.fit || b.firstSeen.localeCompare(a.firstSeen))
     .map((l) => l.id);
   // Replace the queue: what was waiting may be out of date (wishes changed, posting closed).
   queue.length = 0;
@@ -84,7 +89,7 @@ async function work(): Promise<void> {
       if (!l) continue;
       const settings = loadSettings();
       try {
-        saveSummary(id, await summarize(l, settings, recentRejections(loadListings(), loadState())));
+        saveSummary(id, await summarize(l, settings, recentRejections(loadListings(), loadState()), getSummary(id).summary ?? undefined));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (GLOBAL.test(msg)) {
