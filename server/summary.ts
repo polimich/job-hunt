@@ -173,18 +173,40 @@ ${lines.join('\n')}
 </inzerat>`;
 }
 
+export interface ClaudeOptions {
+  model?: string;
+  /** Reasoning effort; null leaves the CLI default. */
+  effort?: string | null;
+  /** Tools the model may use; none by default. Read works only inside `cwd`. */
+  tools?: string[];
+  timeoutMs?: number;
+  /** Working directory; an empty temporary one by default. */
+  cwd?: string;
+  cli?: string;
+}
+
+/** Tools that reach outside the machine need an explicit allowance in print mode. */
+const ALLOW = ['WebSearch'];
+
 /** Runs the CLI once. Rejects with a readable message (not logged in, limit reached, ...). */
-export function runClaude(input: string, system: string, schema: object, cli = process.env.CLAUDE_BIN || 'claude'): Promise<unknown> {
-  const args = ['-p', '--model', MODEL, '--effort', 'low', '--output-format', 'json', '--json-schema', JSON.stringify(schema), '--system-prompt', system, '--tools', '', '--setting-sources', '', '--strict-mcp-config', '--no-session-persistence', '--disable-slash-commands'];
+export function runClaude(input: string, system: string, schema: object, o: ClaudeOptions = {}): Promise<unknown> {
+  const cli = o.cli ?? (process.env.CLAUDE_BIN || 'claude');
+  const tools = o.tools ?? [];
+  const effort = o.effort === undefined ? 'low' : o.effort;
+  const args = ['-p', '--model', o.model ?? MODEL, ...(effort ? ['--effort', effort] : []), '--output-format', 'json', '--json-schema', JSON.stringify(schema), '--system-prompt', system, '--tools', tools.join(',')];
+  const allowed = tools.filter((t) => ALLOW.includes(t));
+  if (allowed.length) args.push('--allowedTools', allowed.join(','));
+  args.push('--setting-sources', '', '--strict-mcp-config', '--no-session-persistence', '--disable-slash-commands');
   // An empty working directory, so no project instructions are picked up.
-  const cwd = mkdtempSync(join(tmpdir(), 'jh-summary-'));
+  const cwd = o.cwd ?? mkdtempSync(join(tmpdir(), 'jh-summary-'));
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     delete env.ANTHROPIC_API_KEY; // would silently bill the API instead of the subscription
+    delete env.APP_PASSWORD; // nothing the model runs needs it
     const child = spawn(cli, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
     let err = '';
-    const timer = setTimeout(() => child.kill('SIGTERM'), TIMEOUT_MS);
+    const timer = setTimeout(() => child.kill('SIGTERM'), o.timeoutMs ?? TIMEOUT_MS);
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (err += d));
     child.on('error', (e) => {

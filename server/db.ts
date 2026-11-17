@@ -240,6 +240,20 @@ const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   ALTER TABLE state ADD COLUMN pass_reason TEXT NOT NULL DEFAULT '';
   ALTER TABLE state ADD COLUMN deferred_at TEXT NOT NULL DEFAULT '';
   `,
+  // 11: application kits (one per posting) and web research (one per company).
+  `
+  CREATE TABLE kits (
+    listing_id TEXT PRIMARY KEY REFERENCES listings(id) ON DELETE CASCADE,
+    data TEXT,
+    error TEXT,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE research (
+    company_id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

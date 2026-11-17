@@ -41,7 +41,7 @@ describe('summary output', () => {
     expect(p).toContain('- match: celé číslo 0–100');
   });
   it('reports a missing CLI in words', async () => {
-    await expect(runClaude('x', 'y', {}, 'definitely-not-a-cli-xyz')).rejects.toThrow(/není nainstalovaný/);
+    await expect(runClaude('x', 'y', {}, { cli: 'definitely-not-a-cli-xyz' })).rejects.toThrow(/není nainstalovaný/);
   });
 });
 

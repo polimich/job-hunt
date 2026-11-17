@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { AlarmClockIcon, RadarIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, ChevronDownIcon, DownloadIcon, HardDriveDownloadIcon, LogOutIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon } from '@lucide/vue';
+import { AlarmClockIcon, RadarIcon, CalendarDaysIcon, CalendarPlusIcon, CopyIcon, FileTextIcon, PaperclipIcon, Trash2Icon, UploadIcon, MailPlusIcon, DatabaseIcon, ChevronDownIcon, DownloadIcon, HardDriveDownloadIcon, LogOutIcon, MailIcon, SaveIcon, SearchIcon, WalletIcon, RefreshCwIcon, UserRoundIcon } from '@lucide/vue';
 import { CITIES, cityCode, ISCO_GROUPS, splitList } from '../../shared/search';
 import { SOURCE_LABELS, type Level, type Settings, type Source, type TemplateKind } from '../../shared/types';
 import FilterChip from '../components/FilterChip.vue';
@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { db, deleteDoc, saveSettings, uploadDoc } from '../store';
+import { api, db, deleteDoc, saveSettings, uploadDoc } from '../store';
 import type { Doc } from '../../shared/types';
 
 const form = reactive<Settings>(structuredClone(JSON.parse(JSON.stringify(db.settings)) as Settings));
@@ -120,7 +120,30 @@ function toggleGroup(id: string) {
   if (i >= 0) form.mpsvCategories.splice(i, 1);
   else form.mpsvCategories.push(id);
 }
+// Links like /nastaveni#muj-profil open the page at that card (after the page transition).
+onMounted(() => {
+  const id = location.hash.slice(1);
+  if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 300);
+});
+
 const saving = ref(false);
+
+// The newest CV the server can read, for the first version of "My profile".
+const cvDoc = computed(() => [...db.docs].filter((d) => /\.(pdf|md|txt)$/i.test(d.fileName)).sort((a, b) => Number(b.kind === 'cv') - Number(a.kind === 'cv') || b.createdAt.localeCompare(a.createdAt))[0]);
+const prefilling = ref(false);
+async function prefill() {
+  if (!cvDoc.value) return;
+  if (form.profile.trim() && !window.confirm('Text profilu se přepíše textem z CV. Pokračovat?')) return;
+  prefilling.value = true;
+  try {
+    form.profile = (await api<{ profile: string }>('/profile/from-cv', { method: 'POST', body: JSON.stringify({ docId: cvDoc.value.id }) })).profile;
+    toast.success('Profil předvyplněn z CV', { description: 'Zkontroluj ho, doplň a ulož.' });
+  } catch (e) {
+    toast.error('CV se nepodařilo přečíst', { description: e instanceof Error ? e.message : String(e) });
+  } finally {
+    prefilling.value = false;
+  }
+}
 
 
 async function save() {
@@ -374,6 +397,44 @@ async function save() {
           <span class="flex flex-col gap-0.5">
             <span class="font-medium">AI shrnutí inzerátů</span>
             <span class="text-xs text-muted-foreground">Nové inzeráty po obnovení shrne Claude (model Haiku) přes tvoje předplatné a připraví z nich karty do Třídit. Začne, jakmile vyplníš „Co od práce chci“.</span>
+          </span>
+        </Label>
+      </CardContent>
+    </Card>
+
+    <Card id="muj-profil">
+      <CardHeader>
+        <CardTitle class="flex items-center gap-2"><UserRoundIcon class="size-4 text-muted-foreground" /> Můj profil pro přihlášky</CardTitle>
+        <CardDescription>Z tohohle textu AI píše koncepty e-mailů, odpovědi do formulářů a CV na míru. Co tu není, nepoužije a nedomyslí si. Čím konkrétnější (čísla, výsledky, odkazy), tím lepší koncepty.</CardDescription>
+      </CardHeader>
+      <CardContent class="flex flex-col gap-5">
+        <div class="flex flex-col gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <Label for="profile">Kdo jsem a co jsem dělal</Label>
+            <Button type="button" variant="outline" size="sm" :disabled="prefilling || !cvDoc" :title="cvDoc ? `Přepíše text z „${cvDoc.label}“` : 'Nejdřív nahraj CV (PDF) v Dokumentech níže'" @click="prefill">
+              <RefreshCwIcon v-if="prefilling" class="animate-spin" /><FileTextIcon v-else /> {{ prefilling ? 'Čtu CV…' : 'Předvyplnit z CV' }}
+            </Button>
+          </div>
+          <Textarea id="profile" v-model="form.profile" rows="16" maxlength="12000" placeholder="Jméno, e-mail, telefon, město, GitHub, LinkedIn&#10;&#10;Praxe (od nejnovější): období, firma, role&#10;- co jsem udělal, s jakým výsledkem (číslo), v čem&#10;&#10;Projekty s odkazy&#10;Dovednosti&#10;Vzdělání, jazyky" class="max-h-[70vh] font-mono text-xs leading-relaxed" />
+          <p class="text-xs text-muted-foreground">Po předvyplnění text zkontroluj a doplň, co v CV není: čísla a výsledky, vedlejší projekty, proč hledáš. Nezapomeň uložit.</p>
+        </div>
+        <div class="grid gap-5 sm:grid-cols-2">
+          <div class="flex flex-col gap-2">
+            <Label for="start-date">Kdy můžu nastoupit</Label>
+            <Input id="start-date" v-model="form.startDate" placeholder="např. od 1. 2. 2027 / po dvouměsíční výpovědní lhůtě" />
+            <p class="text-xs text-muted-foreground">Píše se do každého konceptu.</p>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label for="salary-ask">Platová představa</Label>
+            <Input id="salary-ask" v-model="form.salaryAsk" placeholder="např. 95 000 Kč hrubého měsíčně" />
+            <p class="text-xs text-muted-foreground">Použije se jen tam, kde se inzerát nebo formulář ptá.</p>
+          </div>
+        </div>
+        <Label class="flex items-start gap-3 font-normal">
+          <Checkbox v-model="form.aiKits" class="mt-0.5" />
+          <span class="flex flex-col gap-0.5">
+            <span class="font-medium">Připravovat přihlášky pro Výběr</span>
+            <span class="text-xs text-muted-foreground">Ke každé pozici, kterou při třídění přijmeš, Claude (model Sonnet) na pozadí dohledá firmu na webu a napíše koncepty. Asi minutu na pozici. Začne, jakmile vyplníš profil.</span>
           </span>
         </Label>
       </CardContent>

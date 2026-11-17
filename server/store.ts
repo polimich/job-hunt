@@ -6,7 +6,7 @@ import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { Company, Contact, Db, Doc, Offer, Task, Listing, ListingState, ListingSummary, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import type { ApplicationKit, Company, CompanyResearch, Contact, Db, Doc, Offer, Task, Listing, ListingState, ListingSummary, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, DB_FILE, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
@@ -42,6 +42,10 @@ const DEFAULT_SETTINGS: Settings = {
   followUpDays: 7,
   autoRefresh: true,
   aiSummaries: true,
+  profile: '',
+  startDate: '',
+  salaryAsk: '',
+  aiKits: true,
   wishes: '',
   weeklyGoal: 5,
   sources: {},
@@ -418,7 +422,7 @@ export function saveSettings(s: Settings): void {
 }
 
 export function loadDb(): Db {
-  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), docs: loadDocs(), state: loadState(), runs: loadRuns(), settings: loadSettings(), summaries: loadSummaries(), summaryProfile: '' };
+  return { listings: loadListings(), companies: loadCompanies(), contacts: loadContacts(), tasks: loadTasks(), docs: loadDocs(), state: loadState(), runs: loadRuns(), settings: loadSettings(), summaries: loadSummaries(), summaryProfile: '', ...loadKits(), research: loadResearch() };
 }
 
 // ---------- AI summaries ----------
@@ -455,6 +459,52 @@ export function saveSummaryError(id: string, hash: string, error: string): void 
 }
 
 // ---------- one-time import of the old JSON files ----------
+
+// ---------- application kits ----------
+
+const storedKit = (data: string): ApplicationKit => ({ done: [], gaps: [], ...(JSON.parse(data) as Partial<ApplicationKit>) }) as ApplicationKit;
+
+export function loadKits(): { kits: Record<string, ApplicationKit>; kitErrors: Record<string, string> } {
+  const rows = db().prepare('SELECT listing_id, data, error FROM kits').all() as { listing_id: string; data: string | null; error: string | null }[];
+  return {
+    kits: Object.fromEntries(rows.filter((r) => r.data).map((r) => [r.listing_id, storedKit(r.data!)])),
+    kitErrors: Object.fromEntries(rows.filter((r) => r.error).map((r) => [r.listing_id, r.error!])),
+  };
+}
+
+/** Listings with a kit or a failed attempt; neither is made again by itself. */
+export const kitAttempts = (): Set<string> => new Set((db().prepare('SELECT listing_id FROM kits').all() as { listing_id: string }[]).map((r) => r.listing_id));
+
+export function getKit(id: string): ApplicationKit | null {
+  const r = db().prepare('SELECT data FROM kits WHERE listing_id = ?').get(id) as { data: string | null } | undefined;
+  return r?.data ? storedKit(r.data) : null;
+}
+
+export function saveKit(id: string, kit: ApplicationKit): void {
+  db().prepare('INSERT INTO kits (listing_id, data, error, updated_at) VALUES (?, ?, NULL, ?) ON CONFLICT(listing_id) DO UPDATE SET data = excluded.data, error = NULL, updated_at = excluded.updated_at')
+    .run(id, JSON.stringify(kit), new Date().toISOString());
+}
+
+/** Keeps an older kit, if any, next to the error. */
+export function saveKitError(id: string, error: string): void {
+  db().prepare('INSERT INTO kits (listing_id, data, error, updated_at) VALUES (?, NULL, ?, ?) ON CONFLICT(listing_id) DO UPDATE SET error = excluded.error, updated_at = excluded.updated_at')
+    .run(id, error, new Date().toISOString());
+}
+
+export function loadResearch(): Record<string, CompanyResearch> {
+  const rows = db().prepare('SELECT company_id, data FROM research').all() as { company_id: string; data: string }[];
+  return Object.fromEntries(rows.map((r) => [r.company_id, JSON.parse(r.data) as CompanyResearch]));
+}
+
+export function getResearch(companyId: string): CompanyResearch | null {
+  const r = db().prepare('SELECT data FROM research WHERE company_id = ?').get(companyId) as { data: string } | undefined;
+  return r ? (JSON.parse(r.data) as CompanyResearch) : null;
+}
+
+export function saveResearch(companyId: string, r: CompanyResearch): void {
+  db().prepare('INSERT INTO research (company_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(company_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
+    .run(companyId, JSON.stringify(r), r.createdAt);
+}
 
 /** Fill an empty database from data/*.json, then move those files to data/legacy-json/. */
 export function importLegacy(target: DatabaseSync, files: NonNullable<ReturnType<typeof readLegacy>>): void {

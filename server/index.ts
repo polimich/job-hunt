@@ -19,8 +19,10 @@ import { guard } from './guard.ts';
 import { auth, calendarToken } from './auth.ts';
 import { queueSummaries, summarizeNow, summaryStatus } from './summary-queue.ts';
 import { profileHash } from './summary.ts';
+import { kitsOn, kitStatus, queueKits, requestKit } from './kit-queue.ts';
+import { kitSteps, normalizeKit, profileFromCv } from './kit.ts';
 import { getProgress, startRefresh } from './refresh.ts';
-import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, getSummary, loadSummaries, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
+import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, getSummary, getKit, loadKits, loadResearch, saveKit, loadSummaries, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
 
 const port = Number(process.env.PORT ?? 5174);
 const app = new Hono();
@@ -61,8 +63,7 @@ app.put('/api/state/:id', async (c) => {
   if ('status' in patch && !STATUSES.some((s) => s.id === patch.status)) return c.json({ error: 'unknown status' }, 400);
   if ('contactedAt' in patch && !isDate(patch.contactedAt)) return c.json({ error: 'bad date' }, 400);
   if ('nextAt' in patch && !isDate(patch.nextAt)) return c.json({ error: 'bad date' }, 400);
-  return c.json(
-    updateState(c.req.param('id'), (prev, on, settings) => {
+  const saved = updateState(c.req.param('id'), (prev, on, settings) => {
       let next = patch.status ? withStatus(prev, patch.status, on, settings) : prev;
       if (typeof patch.note === 'string') next = { ...next, note: patch.note };
       // Sorting deck: why I passed, and "later" (true puts the card last, false takes that back).
@@ -81,8 +82,10 @@ app.put('/api/state/:id', async (c) => {
         next = { ...next, docIds: [...new Set(patch.docIds.filter((d) => known.has(d)))] };
       }
       return next;
-    }),
-  );
+    });
+  // A posting I just shortlisted gets its application kit prepared in the background.
+  if (patch.status === 'interested') queueKits();
+  return c.json(saved);
 });
 
 /** Add an entry to the history: a message, an interview or a note. */
@@ -209,6 +212,10 @@ app.put('/api/settings', async (c) => {
   next.autoRefresh = next.autoRefresh !== false;
   next.aiSummaries = next.aiSummaries !== false;
   next.wishes = String(next.wishes ?? '').trim().slice(0, 3000);
+  next.profile = String(next.profile ?? '').trim().slice(0, 12_000);
+  next.startDate = String(next.startDate ?? '').trim().slice(0, 200);
+  next.salaryAsk = String(next.salaryAsk ?? '').trim().slice(0, 200);
+  next.aiKits = next.aiKits !== false;
   next.weeklyGoal = Math.min(Math.max(Math.round(Number(next.weeklyGoal) || 5), 1), 50);
   next.skills = words(next.skills, 60);
   saveSettings(next);
@@ -220,6 +227,8 @@ app.put('/api/settings', async (c) => {
   }
   // New wishes or profile: cards I have not decided on are judged again.
   if (profileHash(next) !== profileHash(prev) || next.aiSummaries !== prev.aiSummaries) queueSummaries();
+  // My profile is written (or kits switched on): prepare what is on the shortlist.
+  if (kitsOn(next) && !kitsOn(prev)) queueKits();
   return c.json(next);
 });
 
@@ -402,6 +411,54 @@ app.get('/api/summaries', (c) => c.json({ summaries: loadSummaries(), profile: p
 app.get('/api/listings/:id/summary', (c) => c.json(getSummary(c.req.param('id'))));
 /** Make (or remake) one summary now; takes about 10 seconds. */
 app.post('/api/listings/:id/summary', async (c) => c.json(await summarizeNow(c.req.param('id'))));
+
+// ---------- application kits ----------
+
+const kitsNow = () => ({ ...loadKits(), research: loadResearch(), status: kitStatus() });
+
+app.get('/api/kits', (c) => c.json(kitsNow()));
+
+/** Prepare the kit (again); `research` also searches the web again. Answers at once, the work runs in the queue. */
+app.post('/api/listings/:id/kit', async (c) => {
+  const id = c.req.param('id');
+  if (!loadListings().some((l) => l.id === id)) return c.json({ error: 'not found' }, 404);
+  if (!loadSettings().profile.trim()) return c.json({ error: 'Nejdřív vyplň „Můj profil“ v Nastavení.' }, 400);
+  const body = (await c.req.json().catch(() => ({}))) as { research?: boolean };
+  return c.json(requestKit({ id, kind: 'kit', fresh: body.research === true }));
+});
+
+/** Write a CV for this posting from my profile and the advice as I edited it. */
+app.post('/api/listings/:id/kit/cv', (c) => {
+  const id = c.req.param('id');
+  if (!getKit(id)) return c.json({ error: 'Nejdřív připrav přihlášku.' }, 400);
+  return c.json(requestKit({ id, kind: 'cv' }));
+});
+
+/** Save my edits of the drafts and the steps I ticked off. */
+app.put('/api/listings/:id/kit', async (c) => {
+  const id = c.req.param('id');
+  const prev = getKit(id);
+  if (!prev) return c.json({ error: 'not found' }, 404);
+  const body = (await c.req.json()) as Record<string, unknown>;
+  const edit = normalizeKit({ ...prev, ...body });
+  const next = { ...prev, email: edit.email, form: edit.form, linkedin: edit.linkedin, cv: edit.cv, done: 'done' in body ? kitSteps(body.done) : prev.done };
+  saveKit(id, next);
+  return c.json(next);
+});
+
+/** Text of an uploaded CV as a first version of "My profile". */
+app.post('/api/profile/from-cv', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { docId?: string };
+  const doc = body.docId ? getDoc(body.docId) : undefined;
+  if (!doc) return c.json({ error: 'Dokument nenalezen.' }, 404);
+  if (!['.pdf', '.md', '.txt'].includes(extname(doc.fileName).toLowerCase())) return c.json({ error: 'Umím číst jen PDF, MD a TXT.' }, 400);
+  try {
+    const profile = await profileFromCv(docPath(doc));
+    return profile ? c.json({ profile }) : c.json({ error: 'Soubor se nepodařilo přečíst.' }, 422);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
+});
 
 app.post('/api/refresh', (c) => c.json({ started: startRefresh(), progress: getProgress() }));
 app.get('/api/refresh', (c) => c.json(getProgress()));

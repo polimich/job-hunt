@@ -100,3 +100,10 @@ export function placeOf(location: string, mode: string, city: string): Listing['
 
 export const placeLabel = (place: Listing['place'], city: string): string =>
   place === 'local' ? city || 'ČR' : place === 'remote' ? 'Remote' : 'Jinde';
+
+/** Czech postings get Czech texts; anything else gets English. */
+export function looksCzech(text: string): boolean {
+  const sample = text.slice(0, 3000);
+  const marks = sample.match(/[ěščřžýáíéůúťďň]/gi)?.length ?? 0;
+  return marks > sample.length * 0.015;
+}

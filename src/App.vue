@@ -54,7 +54,7 @@ const pct = computed(() => (progress.value.total ? Math.round((progress.value.do
 
 const nav = computed(() => [
   { to: '/tridit', label: 'Třídit', icon: LayersIcon, count: toSort.value || undefined, alert: false, active: route.path.startsWith('/tridit') },
-  { to: '/vyber', label: 'Výběr', icon: HeartIcon, count: shortlist.value.length || undefined, alert: false, active: route.path.startsWith('/vyber') },
+  { to: '/vyber', label: 'Výběr', icon: HeartIcon, count: shortlist.value.length || undefined, alert: false, active: route.path.startsWith('/vyber') || route.path.startsWith('/prihlaska') || route.path.startsWith('/cv') },
   { to: '/dnes', label: 'Dnes', icon: SunriseIcon, count: due.value.length + dueTasks.value.length || undefined, alert: due.value.length + dueTasks.value.length > 0, active: route.path.startsWith('/dnes') },
   { to: '/pozice', label: 'Pozice', icon: LayoutListIcon, count: openCount.value, active: route.path.startsWith('/pozice') },
   { to: '/tabule', label: 'Tabule', icon: SquareKanbanIcon, count: undefined, active: route.path.startsWith('/tabule') },
@@ -81,9 +81,9 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
 
 <template>
   <TooltipProvider :delay-duration="300">
-    <div class="flex h-full">
+    <div class="flex h-full print:block print:h-auto">
       <!-- Sidebar (desktop) -->
-      <aside class="hidden w-64 shrink-0 flex-col border-r bg-sidebar/70 backdrop-blur-xl md:flex">
+      <aside class="hidden w-64 shrink-0 flex-col border-r bg-sidebar/70 backdrop-blur-xl md:flex print:hidden!">
         <RouterLink to="/" class="group flex items-center gap-3 px-4 pt-5 pb-6">
           <span
             class="flex size-10 -rotate-6 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-pop"
@@ -198,9 +198,9 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
         </div>
       </aside>
 
-      <div class="flex min-w-0 flex-1 flex-col">
+      <div class="flex min-w-0 flex-1 flex-col print:block">
         <!-- Top bar (mobile) -->
-        <header class="flex items-center gap-1 border-b bg-sidebar/80 px-2 py-2 backdrop-blur-xl md:hidden">
+        <header class="flex items-center gap-1 border-b bg-sidebar/80 px-2 py-2 backdrop-blur-xl md:hidden print:hidden!">
           <RouterLink to="/" class="mr-1 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <BriefcaseBusinessIcon class="size-4" />
           </RouterLink>
@@ -230,7 +230,7 @@ const themeIcon = computed(() => (colorMode.value === 'dark' ? MoonIcon : colorM
           </p>
         </div>
 
-        <main class="min-h-0 flex-1 overflow-auto scrollbar-thin">
+        <main class="min-h-0 flex-1 overflow-auto scrollbar-thin print:overflow-visible">
           <RouterView v-if="loaded" v-slot="{ Component, route: r }">
             <Transition name="page" mode="out-in">
               <component :is="Component" :key="r.path" />

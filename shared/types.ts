@@ -115,6 +115,62 @@ export interface ListingSummary {
   createdAt: string;
 }
 
+/** What the AI found about a company on the web; one per company, shared by its postings. */
+export interface CompanyResearch {
+  what: string;
+  product: string;
+  /** Stack, how they work, engineering blog, open source. */
+  engineering: string[];
+  news: string[];
+  /** Who hires there, as publicly listed: recruiter, team lead, CTO. */
+  people: { name: string; role: string; url: string }[];
+  hiring: string;
+  /** Concrete things an application can refer to. */
+  hooks: string[];
+  sources: string[];
+  model: string;
+  createdAt: string;
+}
+
+/** A CV put together for one posting from my profile and the (edited) advice in the kit. */
+export interface TailoredCv {
+  lang: 'cs' | 'en';
+  name: string;
+  headline: string;
+  contact: string[];
+  links: string[];
+  summary: string;
+  experience: { role: string; company: string; period: string; bullets: string[] }[];
+  projects: { name: string; url: string; text: string }[];
+  skills: { label: string; items: string[] }[];
+  education: { school: string; degree: string; period: string }[];
+  languages: string[];
+  createdAt: string;
+}
+
+export const KIT_STEPS = ['company', 'cv', 'message', 'sent'] as const;
+export type KitStep = (typeof KIT_STEPS)[number];
+
+/** Everything prepared for applying to one posting: drafts to rewrite in my own voice, and advice. */
+export interface ApplicationKit {
+  /** Language of the texts that get sent; the posting's language. */
+  lang: 'cs' | 'en';
+  email: { subject: string; body: string };
+  /** Answers for application forms. */
+  form: { message: string; whyUs: string; aboutMe: string; salary: string; start: string };
+  linkedin: string;
+  cv: { summary: string; moveUp: string[]; keywordsHave: string[]; keywordsMissing: string[] };
+  /** Preparation for the first call. */
+  call: { theyAsk: string[]; know: string[]; myQuestions: string[] };
+  /** Facts the drafts needed and my profile does not have. */
+  gaps: string[];
+  /** Steps of the procedure I ticked off. */
+  done: KitStep[];
+  cvDoc?: TailoredCv;
+  model: string;
+  createdAt: string;
+}
+
 export type EmailKind = 'recruiting' | 'general' | 'person';
 
 export interface CompanyEmail {
@@ -321,6 +377,14 @@ export interface Settings {
   wishes: string;
   /** Summarize new postings with Claude (the owner's subscription, via Claude Code). */
   aiSummaries: boolean;
+  /** Facts about me (experience, projects, numbers, contact); the only source for application drafts. */
+  profile: string;
+  /** When I can start, in my words; goes into every draft. */
+  startDate: string;
+  /** Salary I ask for; used only where the posting or a form asks. */
+  salaryAsk: string;
+  /** Prepare an application kit for every shortlisted posting (Claude with web search). */
+  aiKits: boolean;
   /** Applications I want to send per week. */
   weeklyGoal: number;
   /** My skills, matched against each posting's stack. */
@@ -344,6 +408,11 @@ export interface Db {
   summaries: Record<string, ListingSummary>;
   /** Hash of the wishes and profile right now; a summary with another `profile` is out of date. */
   summaryProfile: string;
+  /** Application kits by listing id, and why the last attempt failed. */
+  kits: Record<string, ApplicationKit>;
+  kitErrors: Record<string, string>;
+  /** Web research by company id. */
+  research: Record<string, CompanyResearch>;
 }
 
 /** What can be read from a pasted posting URL, to prefill the "add by hand" form. */

@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { ENDINGS, emptyOffer, emptyState, today, withStatus } from '../shared/pipeline';
 import { celebrate } from './lib/celebrate';
-import { STATUSES, type Company, type Contact, type Db, type Doc, type Offer, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
+import { STATUSES, type ApplicationKit, type Company, type Contact, type Db, type Doc, type Offer, type Task, type Listing, type ListingState, type ManualInput, type Preview, type RefreshProgress, type Settings, type Status, type TrackEvent } from '../shared/types';
 import { applyFilters, DEFAULT_FILTERS, effectiveStatus, type Filters } from './filters';
 import { buildIndex, search } from './search';
 import { deckOf, shortlistOf } from '../shared/deck';
@@ -18,12 +18,19 @@ const EMPTY: Db = {
   runs: [],
   summaries: {},
   summaryProfile: '',
+  kits: {},
+  kitErrors: {},
+  research: {},
   settings: { introCs: { subject: '', body: '' }, introEn: { subject: '', body: '' }, keywords: [], location: '', radiusKm: 0, remote: true, postedWithinDays: 14, titleMustMatch: [], excludeWords: [], mpsvCategories: [], level: 'any',
     minSalary: 100000,
     followUpDays: 7,
     autoRefresh: true,
     aiSummaries: true,
     wishes: '',
+    profile: '',
+    startDate: '',
+    salaryAsk: '',
+    aiKits: true,
     weeklyGoal: 5,
     skills: [],
     sources: {},
@@ -143,6 +150,35 @@ export async function refreshSummaries(): Promise<void> {
   summaryQueue.value = r.status;
 }
 
+// ---------- application kits ----------
+
+/** The kit queue on the server: which postings are being prepared right now. */
+export const kitQueue = ref<{ running: boolean; ids: string[]; blocked?: string }>({ running: false, ids: [] });
+/** Kits are made once they are switched on and my profile is written. */
+export const kitsOn = computed(() => db.settings.aiKits && !!db.settings.profile.trim());
+
+type KitsAnswer = Pick<Db, 'kits' | 'kitErrors' | 'research'> & { status: typeof kitQueue.value };
+
+/** Fetch the kits made since the page loaded, and what the queue is doing. */
+export async function refreshKits(): Promise<void> {
+  const r = await api<KitsAnswer>('/kits');
+  db.kits = r.kits;
+  db.kitErrors = r.kitErrors;
+  db.research = r.research;
+  kitQueue.value = r.status;
+}
+
+/** Prepare a kit (again), or a CV for the posting; the result arrives through refreshKits. */
+export async function requestKit(id: string, what: 'kit' | 'research' | 'cv'): Promise<void> {
+  const path = `/listings/${encodeURIComponent(id)}/kit${what === 'cv' ? '/cv' : ''}`;
+  kitQueue.value = await api<typeof kitQueue.value>(path, { method: 'POST', body: JSON.stringify({ research: what === 'research' }) });
+  delete db.kitErrors[id];
+}
+
+export async function saveKit(id: string, patch: Partial<Pick<ApplicationKit, 'email' | 'form' | 'linkedin' | 'cv' | 'done'>>): Promise<void> {
+  db.kits[id] = await api<ApplicationKit>(`/listings/${encodeURIComponent(id)}/kit`, { method: 'PUT', body: JSON.stringify(patch) });
+}
+
 /** Put a card off: it comes back after the rest of the deck. */
 export async function deferListing(id: string): Promise<void> {
   db.state[id] = { ...(db.state[id] ?? emptyState()), deferredAt: new Date().toISOString() };
@@ -217,6 +253,7 @@ export async function saveSettings(next: Settings): Promise<void> {
   db.settings = await api<Settings>('/settings', { method: 'PUT', body: JSON.stringify(next) });
   // New wishes change which AI cards count as ready, and restart the queue.
   await refreshSummaries().catch(() => undefined);
+  await refreshKits().catch(() => undefined);
 }
 
 let polling: ReturnType<typeof setInterval> | undefined;

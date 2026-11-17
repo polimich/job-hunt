@@ -370,3 +370,18 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Printing (the tailored CV): the page flows instead of scrolling inside the app shell. */
+@page {
+  size: A4;
+  margin: 14mm;
+}
+@media print {
+  html,
+  body,
+  #app {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+}

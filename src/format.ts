@@ -37,12 +37,7 @@ export function bestEmail(company: Company | undefined) {
   return [...company.emails].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))[0];
 }
 
-/** Czech postings get the Czech intro; anything else gets English. */
-export function looksCzech(text: string): boolean {
-  const sample = text.slice(0, 3000);
-  const marks = sample.match(/[ěščřžýáíéůúťďň]/gi)?.length ?? 0;
-  return marks > sample.length * 0.015;
-}
+export { looksCzech } from '../shared/search';
 
 /** Fill {title}, {company} and {name} (first name of the person, with a leading space) in a template text. */
 export function fillTemplate(text: string, listing: Pick<Listing, 'title' | 'company'>, name = ''): string {

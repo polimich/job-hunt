@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
-import { ArrowRightIcon, ChevronDownIcon, ExternalLinkIcon, HeartIcon, LayersIcon, MailIcon, MinusIcon, PlusIcon, SendIcon, XIcon } from '@lucide/vue';
+import { ArrowRightIcon, ChevronDownIcon, ExternalLinkIcon, FileSignatureIcon, HeartIcon, LayersIcon, MinusIcon, PlusIcon, RefreshCwIcon, SendIcon, SparklesIcon, XIcon } from '@lucide/vue';
 import type { Listing, ListingState } from '../../shared/types';
 import { emptyState } from '../../shared/pipeline';
 import { matchOf } from '../../shared/deck';
@@ -11,30 +11,24 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import CompanyAvatar from '../components/CompanyAvatar.vue';
-import ComposeDialog from '../components/ComposeDialog.vue';
 import PageHeader from '../components/PageHeader.vue';
 import RatingStars from '../components/RatingStars.vue';
 import SummaryCard from '../components/SummaryCard.vue';
-import { bestEmail, looksCzech, PLACE_LABEL } from '../format';
+import { PLACE_LABEL } from '../format';
+import { useKitPolling } from '../kits';
 import { restoreState } from '../mail';
-import { companyById, contactsOf, db, deck, setState, shortlist } from '../store';
+import { db, deck, kitQueue, kitsOn, setState, shortlist } from '../store';
 
 const toSort = computed(() => deck.value.cards.length + deck.value.waiting);
 const said = (v: string | undefined) => !!v && !/^neuvedeno/i.test(v);
 const summaryOf = (l: Listing) => db.summaries[l.id];
 const salaryOf = (l: Listing) => (said(summaryOf(l)?.salary) ? summaryOf(l)!.salary : l.salaryPosted);
-/** Someone to write to: a person I know there, or an address of the company. */
-const hasEmail = (l: Listing) => contactsOf(l.companyId).some((c) => c.email) || !!bestEmail(companyById.value.get(l.companyId));
+
+useKitPolling();
+/** How far the application kit of a posting is. */
+const kitState = (l: Listing) => (kitQueue.value.ids.includes(l.id) ? 'busy' : db.kits[l.id] ? 'ready' : db.kitErrors[l.id] ? 'failed' : 'none');
 
 const openId = ref<string>();
-
-// One e-mail dialog for the page. Opening the e-mail logs it and moves the posting to "Odesláno".
-const composeFor = ref<Listing>();
-const composeOpen = ref(false);
-function write(l: Listing) {
-  composeFor.value = l;
-  composeOpen.value = true;
-}
 
 /** Change the status, with a way back: both moves take the posting off this page. */
 async function move(l: Listing, status: 'applied' | 'passed', message: string) {
@@ -55,11 +49,18 @@ const saveNote = (l: Listing, e: Event) => {
 
 <template>
   <div class="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-6 pb-16 md:px-6">
-    <PageHeader title="Výběr" description="Pozice, které tě při třídění zaujaly. Projdi si je pořádně a ozvi se; po odeslání se přesunou do Odesláno.">
+    <PageHeader title="Výběr" description="Pozice, které tě při třídění zaujaly. Ke každé se na pozadí připraví přihláška; otevři ji, uprav koncepty a odešli.">
       <Button v-if="toSort" variant="outline" size="sm" as-child>
         <RouterLink to="/tridit"><LayersIcon /> Třídit dalších {{ toSort }}</RouterLink>
       </Button>
     </PageHeader>
+
+    <div v-if="shortlist.length && !kitsOn" class="flex flex-wrap items-center gap-3 rounded-2xl border bg-card px-4 py-3 text-sm">
+      <SparklesIcon class="size-4 shrink-0 text-primary" />
+      <p class="min-w-48 flex-1">Ke každé pozici tady umí AI připravit přihlášku: průzkum firmy, koncept e-mailu, odpovědi do formulářů a rady k CV. Potřebuje k tomu tvůj profil.</p>
+      <Button size="sm" as-child><RouterLink to="/nastaveni#muj-profil">Vyplnit profil</RouterLink></Button>
+    </div>
+    <p v-else-if="kitQueue.blocked" class="rounded-2xl border border-destructive/30 bg-danger-soft px-4 py-3 text-sm text-destructive">Příprava přihlášek stojí: {{ kitQueue.blocked }}</p>
 
     <article v-for="l in shortlist" :key="l.id" class="flex flex-col gap-4 rounded-3xl border bg-card p-5">
       <header class="flex items-start gap-3">
@@ -110,10 +111,13 @@ const saveNote = (l: Listing, e: Event) => {
       />
 
       <footer class="flex flex-wrap items-center gap-2">
-        <Button v-if="hasEmail(l)" @click="write(l)"><MailIcon /> Napsat e-mail</Button>
-        <Button v-if="l.url" as="a" :href="l.url" target="_blank" rel="noopener noreferrer" :variant="hasEmail(l) ? 'outline' : 'default'">
-          <ExternalLinkIcon /> Otevřít inzerát
+        <Button as-child>
+          <RouterLink :to="`/prihlaska/${encodeURIComponent(l.id)}`">
+            <RefreshCwIcon v-if="kitState(l) === 'busy'" class="animate-spin" /><FileSignatureIcon v-else />
+            {{ kitState(l) === 'busy' ? 'Přihláška se připravuje' : kitState(l) === 'ready' ? 'Přihláška připravena' : 'Přihláška' }}
+          </RouterLink>
         </Button>
+        <Button v-if="l.url" as="a" :href="l.url" target="_blank" rel="noopener noreferrer" variant="outline"><ExternalLinkIcon /> Otevřít inzerát</Button>
         <Button variant="outline" title="Přihlásil ses přes portál nebo jinak" @click="move(l, 'applied', 'Označeno jako odesláno')"><SendIcon /> Odesláno</Button>
         <Button variant="ghost" class="ml-auto text-muted-foreground hover:text-destructive" @click="move(l, 'passed', 'Vyřazeno')"><XIcon /> Vyřadit</Button>
       </footer>
@@ -132,6 +136,5 @@ const saveNote = (l: Listing, e: Event) => {
       <Button v-else variant="outline" as-child><RouterLink to="/dnes">Přehled dne</RouterLink></Button>
     </Empty>
 
-    <ComposeDialog v-if="composeFor" v-model:open="composeOpen" :listing="composeFor" kind="intro" :lang="looksCzech(composeFor.text) ? 'cs' : 'en'" />
   </div>
 </template>
