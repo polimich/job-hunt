@@ -18,6 +18,8 @@ Opening the app lands on the first step that has something waiting.
    get to know the company, adjust the CV, write the message, send and log it. Sent ones move
    on to the usual tracking (Dnes, Tabule).
 4. **Dnes** (`/dnes`): follow-ups, interviews and tasks, as before.
+5. **Příprava** (`/priprava/:id`): once they answer, get ready for the interview with the coach
+   and collect a cheat sheet ([details](ai.md#interview-preparation)).
 
 The pros, cons and match on the cards are the AI's, judged against "Co od práce chci" in
 Settings (free text), your skills, level, town and minimum salary, and the last few postings

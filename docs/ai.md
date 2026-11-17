@@ -1,4 +1,4 @@
-# AI summaries and application kits
+# AI summaries, application kits and interview preparation
 
 Both are optional and run through the Claude Code CLI on the owner's Claude subscription.
 
@@ -44,3 +44,23 @@ fetching from the server) is told nothing about you, only the company and the po
 that writes gets your profile and no tools. Reading the CV runs in an empty folder holding only
 a copy of that file. Turn kits off in Settings (Připravovat přihlášky pro Výběr); `KIT_MODEL`
 changes the model.
+
+## Interview preparation
+
+Every posting has a page (`/priprava/:id`, linked from the application, the detail and from
+upcoming interviews on Dnes) with a chat and a cheat sheet.
+
+- **The coach** knows the posting, the company research, the application kit and "Můj profil".
+  Four ways to start: a mock interview (one question at a time, feedback on correctness,
+  specifics, structure and length, then a better version built only on what you really did),
+  an intro to their stack compared with yours, a refresher of what you know with short check
+  questions, or a free question. The mock interview runs in the posting's language with feedback
+  in Czech; switch it in the chat. Sonnet by default, Opus per message for deeper answers.
+- **The cheat sheet** ("Tahák") collects your best answers, weak spots, notes on their stack
+  and questions for them. "Doplnit z rozhovoru" brings it up to date from the chat; you can edit
+  it by hand and print it. It also serves as the chat's long memory: each answer gets the last
+  20 messages plus the sheet.
+
+The conversation is stored in the database; each answer is one `claude -p` call without tools,
+written on the server whether or not the page stays open (the page fetches the text so far
+twice a second). The model may be out of date on recent versions and says so when unsure.

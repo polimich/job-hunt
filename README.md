@@ -46,7 +46,7 @@ Good places to start:
 | `server/sources/` | One file per job board behind a common interface (`types.ts`), registered in `index.ts`. Official data and APIs come first; HTML is read only where a portal offers nothing else. |
 | `server/refresh.ts` | The refresh job: re-check open postings, search the sources, add what is new. |
 | `server/guard.ts`, `server/auth.ts` | Request guard (host, origin, content type) and the single-password login with a lockout. |
-| `server/summary.ts`, `server/kit.ts` | Prompts and parsing for the AI features. The call that searches the web gets no personal data; the call that writes gets no tools. |
+| `server/summary.ts`, `server/kit.ts`, `server/chat.ts` | Prompts and parsing for the AI features: summaries, application kits, the interview-prep chat. The call that searches the web gets no personal data; the calls that know my profile get no tools. |
 | `src/pages/` | One file per page. `src/store.ts` holds the client state, `src/filters.ts` and `src/search.ts` the filtering and full-text search. |
 
 `data/` (the database, backups, uploaded documents) is not in git. It is personal, and rolling back code should not roll back notes.
@@ -74,7 +74,7 @@ Optional API keys go into `.env` (copy `.env.example`).
 
 - [User guide](docs/guide.md): the flow, statuses, e-mail, keyboard shortcuts, backups.
 - [Sources and refresh](docs/sources.md): where postings come from and how each source is read.
-- [AI summaries and application kits](docs/ai.md): what is generated, with which model, and how personal data is kept apart.
+- [AI summaries, application kits and interview preparation](docs/ai.md): what is generated, with which model, and how personal data is kept apart.
 - [Hosting](docs/hosting.md): Docker, environment variables, login.
 
 UI components are generated with [shadcn-vue](https://www.shadcn-vue.com) into `src/components/ui/`; theme tokens are in `src/styles.css`.
