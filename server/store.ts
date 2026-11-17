@@ -6,7 +6,7 @@ import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeState } from '../shared/pipeline.ts';
-import type { ApplicationKit, Company, CompanyResearch, Contact, Db, Doc, Offer, Task, Listing, ListingState, ListingSummary, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
+import type { ApplicationKit, Company, PrepChat, CompanyResearch, Contact, Db, Doc, Offer, Task, Listing, ListingState, ListingSummary, RefreshRun, Settings, TrackEvent } from '../shared/types.ts';
 import { DATA_DIR, DB_FILE, openDb, readLegacy, retireLegacy, transaction } from './db.ts';
 
 export { DATA_DIR };
@@ -504,6 +504,18 @@ export function getResearch(companyId: string): CompanyResearch | null {
 export function saveResearch(companyId: string, r: CompanyResearch): void {
   db().prepare('INSERT INTO research (company_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(company_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
     .run(companyId, JSON.stringify(r), r.createdAt);
+}
+
+// ---------- interview preparation ----------
+
+export function getChat(id: string): PrepChat | null {
+  const r = db().prepare('SELECT data FROM chats WHERE listing_id = ?').get(id) as { data: string } | undefined;
+  return r ? (JSON.parse(r.data) as PrepChat) : null;
+}
+
+export function saveChat(id: string, chat: PrepChat): void {
+  db().prepare('INSERT INTO chats (listing_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(listing_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
+    .run(id, JSON.stringify(chat), new Date().toISOString());
 }
 
 /** Fill an empty database from data/*.json, then move those files to data/legacy-json/. */

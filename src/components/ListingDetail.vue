@@ -26,6 +26,7 @@ import {
   ThumbsUpIcon,
   TriangleAlertIcon,
   WalletIcon,
+  GraduationCapIcon,
 } from '@lucide/vue';
 import type { EmailTemplateKind, Listing, Status } from '../../shared/types';
 import { Badge } from '@/components/ui/badge';
@@ -188,6 +189,9 @@ const meta = computed(() =>
       <div class="flex flex-wrap gap-2">
         <Button v-if="listing.url" as="a" :href="listing.url" target="_blank" rel="noopener noreferrer">
           <ExternalLinkIcon /> Otevřít inzerát
+        </Button>
+        <Button variant="outline" as-child>
+          <RouterLink :to="`/priprava/${encodeURIComponent(listing.id)}`"><GraduationCapIcon /> Příprava na pohovor</RouterLink>
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger as-child>

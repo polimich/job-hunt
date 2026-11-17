@@ -171,6 +171,55 @@ export interface ApplicationKit {
   createdAt: string;
 }
 
+export const CHAT_MODES = ['free', 'mock', 'stack', 'review'] as const;
+/** What the interview-prep chat is doing: free talk, mock interview, their stack, my knowledge. */
+export type ChatMode = (typeof CHAT_MODES)[number];
+export type ChatModel = 'sonnet' | 'opus';
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  /** The mode I was in when I sent it. */
+  mode?: ChatMode;
+  /** Which model answered. */
+  model?: ChatModel;
+  at: string;
+  /** I stopped the answer; the text is what had arrived. */
+  stopped?: boolean;
+  /** Why there is no answer. */
+  error?: string;
+}
+
+/** The cheat sheet for one interview, built up from the chat. */
+export interface PrepSheet {
+  /** Questions I expect, with my best answer. */
+  answers: { q: string; a: string }[];
+  weak: string[];
+  /** What to remember about their stack. */
+  stack: string[];
+  /** Questions for them. */
+  ask: string[];
+  updatedAt: string;
+}
+
+/** Interview preparation for one posting: one conversation and its cheat sheet. */
+export interface PrepChat {
+  messages: ChatMessage[];
+  sheet: PrepSheet;
+  /** Language of the mock interview; the posting's unless I switch. */
+  lang: 'cs' | 'en';
+}
+
+/** What the page gets about a chat: the stored part, and what is being made right now. */
+export interface PrepState {
+  chat: PrepChat;
+  /** The answer being written. */
+  running: { text: string; model: ChatModel } | null;
+  sheetBusy: boolean;
+  sheetError?: string;
+}
+
 export type EmailKind = 'recruiting' | 'general' | 'person';
 
 export interface CompanyEmail {

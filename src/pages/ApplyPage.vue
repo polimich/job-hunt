@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { toast } from 'vue-sonner';
-import { ArrowLeftIcon, DownloadIcon, ExternalLinkIcon, FileQuestionIcon, FileTextIcon, MailIcon, RefreshCwIcon, SearchIcon, SendIcon, SparklesIcon, TriangleAlertIcon } from '@lucide/vue';
+import { ArrowLeftIcon, DownloadIcon, ExternalLinkIcon, FileQuestionIcon, FileTextIcon, GraduationCapIcon, MailIcon, RefreshCwIcon, SearchIcon, SendIcon, SparklesIcon, TriangleAlertIcon } from '@lucide/vue';
 import type { KitStep as Step, ListingState } from '../../shared/types';
 import { emptyState } from '../../shared/pipeline';
 import { matchOf } from '../../shared/deck';
@@ -389,8 +389,9 @@ const FORM_FIELDS = [
       <section v-if="kit && (kit.call.theyAsk.length || kit.call.myQuestions.length)" class="flex flex-col gap-4 rounded-3xl border border-dashed p-5 text-sm">
         <div>
           <h2 class="text-lg font-bold">Až se ozvou: první hovor</h2>
-          <p class="text-muted-foreground">Na co se připravit. Přípravu na technický pohovor doděláme zvlášť.</p>
+          <p class="text-muted-foreground">Na co se připravit. S koučem si to můžeš projít nanečisto.</p>
         </div>
+        <Button variant="outline" class="w-fit" as-child><RouterLink :to="`/priprava/${encodeURIComponent(id)}`"><GraduationCapIcon /> Příprava na pohovor</RouterLink></Button>
         <div v-if="kit.call.theyAsk.length">
           <h3 class="mb-1 font-medium">Nejspíš se zeptají</h3>
           <ol class="list-decimal space-y-1 pl-5"><li v-for="x in kit.call.theyAsk" :key="x">{{ x }}</li></ol>

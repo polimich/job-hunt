@@ -7,6 +7,7 @@ export const router = createRouter({
     { path: '/tridit', name: 'deck', component: () => import('./pages/DeckPage.vue') },
     { path: '/vyber', name: 'shortlist', component: () => import('./pages/ShortlistPage.vue') },
     { path: '/prihlaska/:id', name: 'apply', component: () => import('./pages/ApplyPage.vue'), props: true },
+    { path: '/priprava/:id', name: 'prep', component: () => import('./pages/PrepPage.vue'), props: true },
     { path: '/cv/:id', name: 'cv', component: () => import('./pages/CvPage.vue'), props: true },
     { path: '/dnes', name: 'today', component: () => import('./pages/TodayPage.vue') },
     { path: '/pozice', name: 'list', component: () => import('./pages/ListPage.vue') },

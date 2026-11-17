@@ -253,6 +253,14 @@ const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
     updated_at TEXT NOT NULL
   );
   `,
+  // 12: interview preparation: one chat with its cheat sheet per posting.
+  `
+  CREATE TABLE chats (
+    listing_id TEXT PRIMARY KEY REFERENCES listings(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDb(file = DB_FILE): DatabaseSync {

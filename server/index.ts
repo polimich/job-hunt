@@ -21,6 +21,7 @@ import { queueSummaries, summarizeNow, summaryStatus } from './summary-queue.ts'
 import { profileHash } from './summary.ts';
 import { kitsOn, kitStatus, queueKits, requestKit } from './kit-queue.ts';
 import { kitSteps, normalizeKit, profileFromCv } from './kit.ts';
+import * as chat from './chat.ts';
 import { getProgress, startRefresh } from './refresh.ts';
 import { DATA_DIR, deleteCompany, deleteContact, deleteDoc, deleteListing, deleteTask, getDoc, loadDocs, saveDoc, getContact, getState, getTask, saveContact, saveTask, loadCompanies, loadDb, loadListings, loadSettings, DOCS_DIR, DOC_TYPES, docPath, putState, getSummary, getKit, loadKits, loadResearch, saveKit, loadSummaries, replaceDb, saveCompanies, saveListing, saveListings, saveSettings } from './store.ts';
 
@@ -458,6 +459,39 @@ app.post('/api/profile/from-cv', async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
+});
+
+// ---------- interview preparation chat ----------
+
+/** Chat calls answer with the state, or with the reason they cannot run. */
+const chatCall = (fn: () => chat.ChatState): Response => {
+  try {
+    return Response.json(fn());
+  } catch (e) {
+    return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
+  }
+};
+const jsonBody = async (c: { req: { json: () => Promise<unknown> } }) => ((await c.req.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+
+app.get('/api/listings/:id/chat', (c) => chatCall(() => chat.chatState(c.req.param('id'))));
+app.post('/api/listings/:id/chat', async (c) => {
+  const body = await jsonBody(c);
+  return chatCall(() => chat.send(c.req.param('id'), body));
+});
+app.put('/api/listings/:id/chat', async (c) => {
+  const body = await jsonBody(c);
+  return chatCall(() => chat.setLang(c.req.param('id'), body.lang));
+});
+app.delete('/api/listings/:id/chat', (c) => chatCall(() => chat.clear(c.req.param('id'))));
+app.post('/api/listings/:id/chat/stop', (c) => chatCall(() => chat.stop(c.req.param('id'))));
+app.post('/api/listings/:id/chat/retry', async (c) => {
+  const body = await jsonBody(c);
+  return chatCall(() => chat.retry(c.req.param('id'), body.model));
+});
+app.post('/api/listings/:id/chat/sheet', (c) => chatCall(() => chat.updateSheet(c.req.param('id'))));
+app.put('/api/listings/:id/chat/sheet', async (c) => {
+  const body = await jsonBody(c);
+  return chatCall(() => chat.saveSheet(c.req.param('id'), body));
 });
 
 app.post('/api/refresh', (c) => c.json({ started: startRefresh(), progress: getProgress() }));

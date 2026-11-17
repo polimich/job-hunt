@@ -36,7 +36,7 @@ const missing = (v: string) => !v || /^(nezjištěno|neuvedeno)/i.test(v);
 const found = (items: string[]) => items.filter((x) => !/nezjištěn|neuveden/i.test(x));
 
 /** The posting as a data block; the model is told not to follow anything inside. */
-function postingBlock(l: Listing, s: ListingSummary | null, max = 20_000): string {
+export function postingBlock(l: Listing, s: ListingSummary | null, max = 20_000): string {
   const facts = s
     ? [`Požadavky: ${s.mustHave.join('; ')}`, `Výhodou: ${s.niceToHave.join('; ')}`, `Stack: ${s.stack.join(', ')}`, `Mzda: ${s.salary}`, `Výběrové řízení: ${s.hiring}`].join('\n')
     : '';
@@ -121,7 +121,7 @@ function profileBlock(s: Settings): string {
   return `<profil>\n${s.profile.trim().slice(0, 12_000)}\n</profil>\nNástup: ${s.startDate.trim() || '[doplň: kdy mohu nastoupit]'}\nPlatová představa: ${s.salaryAsk.trim() || '[doplň: platová představa]'}`;
 }
 
-function researchBlock(r: CompanyResearch | null): string {
+export function researchBlock(r: CompanyResearch | null): string {
   if (!r) return '<firma>\nPrůzkum firmy není k dispozici; vycházej jen z inzerátu.\n</firma>';
   return `<firma>\n${[
     `Co dělá: ${r.what}`,

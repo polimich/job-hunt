@@ -185,6 +185,14 @@ export interface ClaudeOptions {
   cli?: string;
 }
 
+/** The environment for the CLI: the subscription login, without what the model has no use for. */
+export function claudeEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY; // would silently bill the API instead of the subscription
+  delete env.APP_PASSWORD; // nothing the model runs needs it
+  return env;
+}
+
 /** Tools that reach outside the machine need an explicit allowance in print mode. */
 const ALLOW = ['WebSearch'];
 
@@ -200,9 +208,7 @@ export function runClaude(input: string, system: string, schema: object, o: Clau
   // An empty working directory, so no project instructions are picked up.
   const cwd = o.cwd ?? mkdtempSync(join(tmpdir(), 'jh-summary-'));
   return new Promise((resolve, reject) => {
-    const env = { ...process.env };
-    delete env.ANTHROPIC_API_KEY; // would silently bill the API instead of the subscription
-    delete env.APP_PASSWORD; // nothing the model runs needs it
+    const env = claudeEnv();
     const child = spawn(cli, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
     let err = '';

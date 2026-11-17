@@ -233,6 +233,7 @@ function showNew() {
                   <p class="truncate text-muted-foreground">{{ x.event.time ? `${x.event.time} · ` : '' }}{{ x.event.text || x.listing.title }}</p>
                 </div>
               </RouterLink>
+              <RouterLink :to="`/priprava/${encodeURIComponent(x.listing.id)}`" class="mt-1 ml-3 inline-block text-xs font-medium text-primary underline-offset-4 hover:underline">Připravit se s koučem →</RouterLink>
             </li>
           </ul>
         </section>
